@@ -208,20 +208,20 @@ public class CachingInputStream
         // mark all read blocks cached
         // We can let this is happen in background
         final long lastBlock = nextReadBlock;
-        readService.execute(new Runnable()
+        /*readService.execute(new Runnable()
         {
             @Override
             public void run()
-            {
+            {*/
                 ReadRequestChainStats stats = new ReadRequestChainStats();
                 for (ReadRequestChain readRequestChain : readRequestChains) {
                     readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
                     stats = stats.add(readRequestChain.getStats());
                 }
                 statsMbean.addReadRequestChainStats(stats);
-            }
+        /*    }
         });
-
+*/
         log.debug(String.format("Read %d bytes for "  + remotePath + " [" + nextReadPosition + ", " + (nextReadPosition + length) + "]", sizeRead));
         verifyData(checkPos, sizeRead, buffer, offset);
         if (sizeRead > 0) {
