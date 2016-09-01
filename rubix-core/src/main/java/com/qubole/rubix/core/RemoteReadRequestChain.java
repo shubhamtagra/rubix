@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.qubole.rubix.bookkeeper.BookKeeperClient.createBookKeeperClient;
@@ -41,13 +43,15 @@ public class RemoteReadRequestChain extends ReadRequestChain
     private int totalSuffixRead = 0;
     private int totalRequestedRead = 0;
     private long warmupPenalty = 0;
+    private String range;
 
     private static final Log log = LogFactory.getLog(RemoteReadRequestChain.class);
 
-    public RemoteReadRequestChain(FSDataInputStream inputStream, String localFile)
+    public RemoteReadRequestChain(FSDataInputStream inputStream, String localFile, String range)
     {
         this.inputStream = inputStream;
         this.localFilename = localFile;
+        this.range = range;
     }
 
     public Integer call() throws IOException
@@ -148,9 +152,12 @@ public class RemoteReadRequestChain extends ReadRequestChain
     {
         try {
             BookKeeperClient client = createBookKeeperClient(conf);
+            List<String> blks = new ArrayList();
             for (ReadRequest readRequest : readRequests) {
                 client.setAllCached(remotePath, fileSize, lastModified, toBlock(readRequest.getBackendReadStart(), blockSize), toBlock(readRequest.getBackendReadEnd() - 1, blockSize) + 1);
+                blks.add(toBlock(readRequest.getBackendReadStart(), blockSize) + "-" + (toBlock(readRequest.getBackendReadEnd() - 1, blockSize) + 1) + ",");
             }
+            log.warn("For " + remotePath + range + " marked cached: " + blks);
             client.close();
         }
         catch (Exception e) {

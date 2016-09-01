@@ -33,6 +33,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -133,10 +134,10 @@ public class CachingInputStream
             throws IOException
     {
         checkState(pos >= 0, "Negative Position");
-        log.debug(String.format("Seek request, currentPos: %d currentBlock: %d", nextReadPosition, nextReadBlock));
+        log.debug(String.format("Seek request, file : %s currentPos: %d currentBlock: %d", remotePath, nextReadPosition, nextReadBlock));
         this.nextReadPosition = pos;
         setNextReadBlock();
-        log.debug(String.format("Seek to %d, setting block location %d", nextReadPosition, nextReadBlock));
+        log.debug(String.format("Seek to %d, setting block location %d %s", nextReadPosition, nextReadBlock, remotePath));
     }
 
     @Override
@@ -165,23 +166,23 @@ public class CachingInputStream
     public int read(byte[] buffer, int offset, int length)
             throws IOException
     {
-        log.warn("YYY READ in " + InetAddress.getLocalHost().getCanonicalHostName() + ": " + conf.get("ABCD"));
-        log.debug(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d", nextReadPosition, nextReadBlock, offset, length));
+        log.debug(String.format("Got Read, file: currentPos: %d currentBlock: %d bufferOffset: %d length: %d", remotePath, nextReadPosition, nextReadBlock, offset, length));
         if (nextReadPosition >= fileSize) {
             log.debug("Already at eof, returning");
             return -1;
         }
+        long checkPos = nextReadPosition;
 
         // Get the last block
-        final long endBlock = ((nextReadPosition + (length - 1)) /  blockSize) + 1; // this block will not be read
+        final long endBlock = ((nextReadPosition + (length - 1)) / blockSize) + 1; // this block will not be read
 
         // Create read requests
         final List<ReadRequestChain> readRequestChains = setupReadRequestChains(buffer,
-                                                        offset,
-                                                        endBlock,
-                                                        length);
+                offset,
+                endBlock,
+                length);
 
-        log.debug("Executing Chains");
+        log.debug("Executing Chains for " + remotePath + " [" + nextReadPosition + ", " + (nextReadPosition + length) + "]");
         // start read requests
         ImmutableList.Builder builder = ImmutableList.builder();
         for (ReadRequestChain readRequestChain : readRequestChains) {
@@ -207,7 +208,8 @@ public class CachingInputStream
         // mark all read blocks cached
         // We can let this is happen in background
         final long lastBlock = nextReadBlock;
-        readService.execute(new Runnable(){
+        readService.execute(new Runnable()
+        {
             @Override
             public void run()
             {
@@ -220,13 +222,69 @@ public class CachingInputStream
             }
         });
 
-        log.debug(String.format("Read %d bytes", sizeRead));
+        log.debug(String.format("Read %d bytes for "  + remotePath + " [" + nextReadPosition + ", " + (nextReadPosition + length) + "]", sizeRead));
+        verifyData(checkPos, sizeRead, buffer, offset);
         if (sizeRead > 0) {
             nextReadPosition += sizeRead;
             setNextReadBlock();
-            log.debug(String.format("New nextReadPosition: %d nextReadBlock: %d", nextReadPosition, nextReadBlock));
+            log.debug(String.format("New file: %s nextReadPosition: %d nextReadBlock: %d", remotePath, nextReadPosition, nextReadBlock));
         }
         return sizeRead;
+    }
+
+    private void verifyData(long start, int length, byte[] readBuffer, int readBufferOffset)
+    {
+        try {
+            long revertTo = inputStream.getPos();
+            byte[] newBuf = new byte[length];
+            inputStream.seek(start);
+            int nread = 0;
+            while (nread < length) {
+                int nbytes = inputStream.read(newBuf, nread, length - nread);
+                if (nbytes < 0) {
+                    break;
+                }
+                nread += nbytes;
+            }
+            inputStream.seek(revertTo);
+
+            List<String> nonMatchingPositions = new ArrayList<>();
+            boolean mismatch = false;
+            int last = -1;
+            int first = -1;
+            for (int i = 0; i < length; i++) {
+                if (readBuffer[readBufferOffset + i] != newBuf[i]) {
+                    mismatch = true;
+                    if (last == -1) {
+                        last = i;
+                        first = i;
+                    }
+                    else {
+                        if (last == (i - 1)) {
+                            last = i;
+                        }
+                        else {
+                            nonMatchingPositions.add(first + "-" + last + ",");
+                            first = i;
+                            last = i;
+                        }
+                    }
+                }
+            }
+            if (last != -1 && first != -1) {
+                nonMatchingPositions.add(first + "-" + last + ",");
+            }
+
+            if (mismatch) {
+                log.error("Data mismatch for " + remotePath + " [" + start + ", " + (start + length) + "]" + " at positions " + nonMatchingPositions);
+            }
+            else {
+                log.info("Verification completed successfully for " + remotePath + " [" + start + ", " + (start + length) + "]");
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private List<ReadRequestChain> setupReadRequestChains(byte[] buffer,
@@ -234,6 +292,7 @@ public class CachingInputStream
             long endBlock,
             int length)
     {
+        String range = " [" + nextReadPosition + "-" + (nextReadPosition + length) + "]";
         DirectReadRequestChain directReadRequestChain = null;
         RemoteReadRequestChain remoteReadRequestChain = null;
         CachedReadRequestChain cachedReadRequestChain = null;
@@ -287,7 +346,7 @@ public class CachingInputStream
             lengthAlreadyConsidered += readRequest.getActualReadLength();
 
             if (isCached == null) {
-                log.debug(String.format("Sending block %d to DirectReadRequestChain", blockNum));
+                log.debug(String.format("Sending block %d to DirectReadRequestChain " + remotePath, blockNum));
                 if (directReadRequestChain == null) {
                     directReadRequestChain = new DirectReadRequestChain(inputStream);
                     readRequestChainBuilder.add(directReadRequestChain);
@@ -295,7 +354,7 @@ public class CachingInputStream
                 directReadRequestChain.addReadRequest(readRequest);
             }
             else if (isCached.get(idx)) {
-                log.debug(String.format("Sending Cached block %d to cachedReadRequestChain", blockNum));
+                log.debug(String.format("Sending Cached block %d to cachedReadRequestChain " + remotePath, blockNum));
                 if (cachedReadRequestChain == null) {
                     cachedReadRequestChain = new CachedReadRequestChain(localFileForReading);
                     readRequestChainBuilder.add(cachedReadRequestChain);
@@ -313,9 +372,9 @@ public class CachingInputStream
                     nonLocalReadRequestChain.addReadRequest(readRequest);
                 }
                 else {
-                    log.debug(String.format("Sending block %d to remoteReadRequestChain", blockNum));
+                    log.debug(String.format("Sending block %d to remoteReadRequestChain " + remotePath, blockNum));
                     if (remoteReadRequestChain == null) {
-                        remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath);
+                        remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath, range);
                         readRequestChainBuilder.add(remoteReadRequestChain);
                     }
                     remoteReadRequestChain.addReadRequest(readRequest);

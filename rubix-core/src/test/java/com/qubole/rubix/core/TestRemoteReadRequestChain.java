@@ -51,7 +51,7 @@ public class TestRemoteReadRequestChain
 
         LocalFSInputStream localFSInputStream = new LocalFSInputStream(backendFileName);
         fsDataInputStream = new FSDataInputStream(localFSInputStream);
-        remoteReadRequestChain = new RemoteReadRequestChain(fsDataInputStream, localFileName);
+        remoteReadRequestChain = new RemoteReadRequestChain(fsDataInputStream, localFileName, "");
     }
 
     @Test
