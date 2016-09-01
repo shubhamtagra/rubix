@@ -166,7 +166,7 @@ public class CachingInputStream
     public int read(byte[] buffer, int offset, int length)
             throws IOException
     {
-        log.debug(String.format("Got Read, file: currentPos: %d currentBlock: %d bufferOffset: %d length: %d", remotePath, nextReadPosition, nextReadBlock, offset, length));
+        log.debug(String.format("Got Read, file: %s currentPos: %d currentBlock: %d bufferOffset: %d length: %d", remotePath, nextReadPosition, nextReadBlock, offset, length));
         if (nextReadPosition >= fileSize) {
             log.debug("Already at eof, returning");
             return -1;
