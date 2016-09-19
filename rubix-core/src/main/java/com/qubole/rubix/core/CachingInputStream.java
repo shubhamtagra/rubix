@@ -131,10 +131,10 @@ public class CachingInputStream
             throws IOException
     {
         checkState(pos >= 0, "Negative Position");
-        log.debug(String.format("Seek request, currentPos: %d currentBlock: %d", nextReadPosition, nextReadBlock));
+        //log.debug(String.format("Seek request, currentPos: %d currentBlock: %d", nextReadPosition, nextReadBlock));
         this.nextReadPosition = pos;
         setNextReadBlock();
-        log.debug(String.format("Seek to %d, setting block location %d", nextReadPosition, nextReadBlock));
+        //log.debug(String.format("Seek to %d, setting block location %d", nextReadPosition, nextReadBlock));
     }
 
     @Override
@@ -163,7 +163,7 @@ public class CachingInputStream
     public int read(byte[] buffer, int offset, int length)
             throws IOException
     {
-        log.debug(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d", nextReadPosition, nextReadBlock, offset, length));
+        //log.debug(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d", nextReadPosition, nextReadBlock, offset, length));
         if (nextReadPosition >= fileSize) {
             log.debug("Already at eof, returning");
             return -1;
@@ -178,7 +178,7 @@ public class CachingInputStream
                                                         endBlock,
                                                         length);
 
-        log.debug("Executing Chains");
+        //log.debug("Executing Chains");
         // start read requests
         ImmutableList.Builder builder = ImmutableList.builder();
         for (ReadRequestChain readRequestChain : readRequestChains) {
@@ -217,11 +217,11 @@ public class CachingInputStream
             }
         });
 
-        log.debug(String.format("Read %d bytes", sizeRead));
+        //log.debug(String.format("Read %d bytes", sizeRead));
         if (sizeRead > 0) {
             nextReadPosition += sizeRead;
             setNextReadBlock();
-            log.debug(String.format("New nextReadPosition: %d nextReadBlock: %d", nextReadPosition, nextReadBlock));
+            //log.debug(String.format("New nextReadPosition: %d nextReadBlock: %d", nextReadPosition, nextReadBlock));
         }
         return sizeRead;
     }
@@ -236,14 +236,14 @@ public class CachingInputStream
         CachedReadRequestChain cachedReadRequestChain = null;
         NonLocalReadRequestChain nonLocalReadRequestChain = null;
 
-        ImmutableList.Builder readRequestChainBuilder = ImmutableList.builder();
+        ImmutableList.Builder chainedReadRequestChainBuilder = ImmutableList.builder();
 
         int lengthAlreadyConsidered = 0;
         List<Integer> isCached = null;
         int c = conf.getInt("ClusterManager", 0);
         try {
             if (bookKeeperClient != null) {
-                log.info("Getting Cache Status");
+                //log.info("Getting Cache Status");
                 isCached = bookKeeperClient.getCacheStatus(remotePath, fileSize, lastModified, nextReadBlock, endBlock, c);
             }
         }
@@ -262,7 +262,7 @@ public class CachingInputStream
             // if backendReadStart is after EOF, then return. It can happen while reading last block and enf of read covers multiple blocks after EOF
             if (backendReadStart >= fileSize) {
                 log.debug("Reached EOF, returning");
-                return readRequestChainBuilder.build();
+                return chainedReadRequestChainBuilder.build();
             }
 
             if (backendReadEnd >= fileSize) {
@@ -289,7 +289,7 @@ public class CachingInputStream
                 log.info(String.format("Sending block %d to DirectReadRequestChain", blockNum));
                 if (directReadRequestChain == null) {
                     directReadRequestChain = new DirectReadRequestChain(inputStream);
-                    readRequestChainBuilder.add(directReadRequestChain);
+                    //chainedReadRequestChainBuilder.add(directReadRequestChain);
                 }
                 directReadRequestChain.addReadRequest(readRequest);
             }
@@ -297,7 +297,7 @@ public class CachingInputStream
                 log.info(String.format("Sending Cached block %d to cachedReadRequestChain", blockNum));
                 if (cachedReadRequestChain == null) {
                     cachedReadRequestChain = new CachedReadRequestChain(localFileForReading);
-                    readRequestChainBuilder.add(cachedReadRequestChain);
+                    //chainedReadRequestChainBuilder.add(cachedReadRequestChain);
                 }
                 cachedReadRequestChain.addReadRequest(readRequest);
 
@@ -307,7 +307,7 @@ public class CachingInputStream
                     log.info(String.format("Sending block %d to NonLocalReadRequestChain", blockNum));
                     if (nonLocalReadRequestChain == null) {
                         nonLocalReadRequestChain = new NonLocalReadRequestChain(inputStream);
-                        readRequestChainBuilder.add(nonLocalReadRequestChain);
+                        //chainedReadRequestChainBuilder.add(nonLocalReadRequestChain);
                     }
                     nonLocalReadRequestChain.addReadRequest(readRequest);
                 }
@@ -315,30 +315,40 @@ public class CachingInputStream
                     log.info(String.format("Sending block %d to remoteReadRequestChain", blockNum));
                     if (remoteReadRequestChain == null) {
                         remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath);
-                        readRequestChainBuilder.add(remoteReadRequestChain);
+                        //chainedReadRequestChainBuilder.add(remoteReadRequestChain);
                     }
                     remoteReadRequestChain.addReadRequest(readRequest);
                 }
             }
         }
 
-        return readRequestChainBuilder.build();
+        if (cachedReadRequestChain != null) {
+            chainedReadRequestChainBuilder.add(new ChainedReadRequestChain().addRRC(cachedReadRequestChain));
+        }
+
+        if (nonLocalReadRequestChain != null ||
+                directReadRequestChain != null ||
+                remoteReadRequestChain != null) {
+            ChainedReadRequestChain shared = new ChainedReadRequestChain();
+            if (remoteReadRequestChain != null) {
+                shared.addRRC(remoteReadRequestChain);
+            }
+
+            if (nonLocalReadRequestChain != null) {
+                shared.addRRC(nonLocalReadRequestChain);
+            }
+
+            if (directReadRequestChain != null) {
+                shared.addRRC(directReadRequestChain);
+            }
+            chainedReadRequestChainBuilder.add(shared);
+        }
+        return chainedReadRequestChainBuilder.build();
     }
 
     private void setNextReadBlock()
     {
         this.nextReadBlock = this.nextReadPosition / blockSize;
-    }
-
-    private boolean isLocal(long block)
-    {
-        log.info("Checking isLocal: localityInfoPresent is" + localityInfoPresent);
-        if (!localityInfoPresent) {
-            return true;
-        }
-        long split = (block * blockSize) /  splitSize;
-        log.info("Checking isLocal: localSplits is" + localSplits.contains(Long.toString(split)));
-        return localSplits.contains(Long.toString(split));
     }
 
     @Override
