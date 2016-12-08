@@ -14,6 +14,10 @@ package com.qubole.rubix.core;
 
 import com.google.common.base.Charsets;
 import com.google.common.base.Throwables;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
@@ -39,6 +43,9 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import static com.qubole.rubix.core.CachingConfigHelper.skipCache;
 /**
@@ -53,6 +60,9 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     private boolean cacheSkipped = false;
 
     private static CachingFileSystemStats statsMBean;
+
+    private static Cache<Path, FileStatus> cacheFileStatus;
+    private static Cache<Path, FileStatus[]> cacheListStatus;
 
     static {
         MBeanExporter exporter = new MBeanExporter(ManagementFactory.getPlatformMBeanServer());
@@ -93,6 +103,35 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
         }
         super.initialize(uri, conf);
         fs.initialize(uri, conf);
+        if (cacheFileStatus == null) {
+            cacheFileStatus = CacheBuilder
+                    .newBuilder()
+                    .expireAfterWrite(36000, TimeUnit.SECONDS)
+                    .removalListener(new RemovalListener<Path, FileStatus>()
+                    {
+                        @Override
+                        public void onRemoval(
+                                RemovalNotification<Path, FileStatus> notification)
+                        {
+                            log.info("removed filestatus " + notification.getKey()
+                                    + " due to " + notification.getCause());
+                        }
+                    }).build();
+
+            cacheListStatus = CacheBuilder
+                    .newBuilder()
+                    .expireAfterWrite(36000, TimeUnit.SECONDS)
+                    .removalListener(new RemovalListener<Path, FileStatus[]>()
+                    {
+                        @Override
+                        public void onRemoval(
+                                RemovalNotification<Path, FileStatus[]> notification)
+                        {
+                            log.info("removed liststatus " + notification.getKey()
+                                    + " due to " + notification.getCause());
+                        }
+                    }).build();
+        }
     }
 
     @Override
@@ -165,10 +204,16 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     }
 
     @Override
-    public FileStatus[] listStatus(Path path)
+    public FileStatus[] listStatus(Path dirPath)
             throws FileNotFoundException, IOException
     {
-        return fs.listStatus(path);
+        try {
+            return cacheListStatus.get(dirPath, new ListStatusCallable(fs, dirPath));
+        }
+        catch (ExecutionException e) {
+            log.warn("unable to get liststatus from cache");
+            return fs.listStatus(dirPath);
+        }
     }
 
     @Override
@@ -194,7 +239,13 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     public FileStatus getFileStatus(Path path)
             throws IOException
     {
-        return fs.getFileStatus(path);
+        try {
+            return cacheFileStatus.get(path, new FileStatusCallable(path));
+        }
+        catch (ExecutionException e) {
+            log.warn("unable to get filestatus from cache");
+            return fs.getFileStatus(path);
+        }
     }
 
     @Override
@@ -239,6 +290,46 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
         }
         else {
             throw new IllegalArgumentException("Invalid start or len parameter");
+        }
+    }
+
+    class FileStatusCallable
+            implements Callable<FileStatus>
+    {
+        private Path path = null;
+
+        public FileStatusCallable(Path path)
+        {
+            this.path = path;
+        }
+
+        @Override
+        public FileStatus call()
+                throws Exception
+        {
+            log.debug("calling underlying fs filestatus");
+            return fs.getFileStatus(path);
+        }
+    }
+
+    class ListStatusCallable
+            implements Callable<FileStatus[]>
+    {
+        private FileSystem fs = null;
+        private Path dirPath = null;
+
+        public ListStatusCallable(FileSystem fs, Path path)
+        {
+            this.fs = fs;
+            this.dirPath = path;
+        }
+
+        @Override
+        public FileStatus[] call()
+                throws Exception
+        {
+            log.debug("calling underlying fs listStatus");
+            return fs.listStatus(dirPath);
         }
     }
 }
