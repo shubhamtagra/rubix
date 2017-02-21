@@ -46,6 +46,17 @@ public class ReadRequest
         this.backendFileSize = backendFileSize;
     }
 
+    public void setInfo(long backendReadStart, long backendReadEnd, long actualReadStart, long actualReadEnd, byte[] destBuffer, int destBufferOffset, long backendFileSize)
+    {
+        this.backendReadStart = backendReadStart;
+        this.backendReadEnd = backendReadEnd;
+        this.actualReadStart = actualReadStart;
+        this.actualReadEnd = actualReadEnd;
+        this.destBuffer = destBuffer;
+        this.destBufferOffset = destBufferOffset;
+        this.backendFileSize = backendFileSize;
+    }
+
     public long getBackendReadStart()
     {
         return backendReadStart;

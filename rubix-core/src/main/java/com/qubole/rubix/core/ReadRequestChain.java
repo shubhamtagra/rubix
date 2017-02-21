@@ -46,6 +46,28 @@ public abstract class ReadRequestChain implements Callable<Integer>
     }
 
     // Should be added in forward seek fashion for better performance
+    public void addReadRequest(ReadRequestPool readRequestPool, long backendReadStart, long backendReadEnd, long actualReadStart, long actualReadEnd, byte[] destBuffer, int destBufferOffset, long backendFileSize)
+    {
+        checkState(!isLocked, "Adding request to a locked chain");
+        //log.debug(String.format("Request to add ReadRequest: [%d, %d, %d, %d, %d]", readRequest.getBackendReadStart(), readRequest.getBackendReadEnd(), readRequest.getActualReadStart(), readRequest.getActualReadEnd(), readRequest.getDestBufferOffset()));
+        if (lastRequest == null) {
+            addRequest(readRequestPool.getReadRequest(backendReadStart, backendReadEnd, actualReadStart, actualReadEnd, destBuffer, destBufferOffset, backendFileSize));
+        }
+        else {
+            // since one chain contains request of same buffer, we can collate
+            if (lastRequest.getBackendReadEnd() == backendReadStart) {
+                // Since the ReadRequests coming in are for same buffer, can merge the two
+                lastRequest.setBackendReadEnd(backendReadEnd);
+                lastRequest.setActualReadEnd(actualReadEnd);
+                log.debug(String.format("Updated last to: [%d, %d, %d, %d, %d]", lastRequest.getBackendReadStart(), lastRequest.getBackendReadEnd(), lastRequest.getActualReadStart(), lastRequest.getActualReadEnd(), lastRequest.getDestBufferOffset()));
+            }
+            else {
+                addRequest(readRequestPool.getReadRequest(backendReadStart, backendReadEnd, actualReadStart, actualReadEnd, destBuffer, destBufferOffset, backendFileSize));
+            }
+        }
+        requests++;
+    }
+
     public void addReadRequest(ReadRequest readRequest)
     {
         checkState(!isLocked, "Adding request to a locked chain");

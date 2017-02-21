@@ -37,6 +37,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +76,8 @@ public class CachingInputStream
     private boolean strictMode = false;
     ClusterType clusterType;
     FileSystem remoteFileSystem;
+
+    private static ReadRequestPool readRequestPool = new ReadRequestPool();
 
     public CachingInputStream(FSDataInputStream parentInputStream, FileSystem parentFs, Path backendPath, Configuration conf, CachingFileSystemStats statsMbean, ClusterType clusterType, BookKeeperFactory bookKeeperFactory, FileSystem remoteFileSystem)
             throws IOException
@@ -237,6 +241,21 @@ public class CachingInputStream
             setNextReadBlock();
             log.debug(String.format("New nextReadPosition: %d nextReadBlock: %d", nextReadPosition, nextReadBlock));
         }
+
+        int size = 0;
+        for (ReadRequestChain readRequestChain : readRequestChains) {
+            if (readRequestChain.getReadRequests().size() > size) {
+                size = readRequestChain.getReadRequests().size();
+            }
+        }
+        List<WeakReference<ReadRequest>> list = new ArrayList(size);
+        for (ReadRequestChain readRequestChain : readRequestChains) {
+            for (ReadRequest readRequest : readRequestChain.getReadRequests()) {
+                list.add(new WeakReference<ReadRequest>(readRequest));
+            }
+            readRequestPool.returnBuffer(list);
+            list.clear();
+        }
         return sizeRead;
     }
 
@@ -302,7 +321,13 @@ public class CachingInputStream
                 if (directReadRequestChain == null) {
                     directReadRequestChain = new DirectReadRequestChain(inputStream);
                 }
-                directReadRequestChain.addReadRequest(readRequest);
+                directReadRequestChain.addReadRequest(readRequestPool, backendReadStart,
+                        backendReadEnd,
+                        actualReadStart,
+                        actualReadEnd,
+                        buffer,
+                        bufferOffest,
+                        fileSize);
             }
 
             else if (isCached.get(idx).getLocation() == Location.CACHED) {
@@ -310,7 +335,13 @@ public class CachingInputStream
                 if (cachedReadRequestChain == null) {
                     cachedReadRequestChain = new CachedReadRequestChain(localFileForReading);
                 }
-                cachedReadRequestChain.addReadRequest(readRequest);
+                cachedReadRequestChain.addReadRequest(readRequestPool, backendReadStart,
+                        backendReadEnd,
+                        actualReadStart,
+                        actualReadEnd,
+                        buffer,
+                        bufferOffest,
+                        fileSize);
             }
             else {
                 if (isCached.get(idx).getLocation() == Location.NON_LOCAL) {
@@ -320,14 +351,26 @@ public class CachingInputStream
                         NonLocalReadRequestChain nonLocalReadRequestChain = new NonLocalReadRequestChain(remoteLocation, fileSize, lastModified, conf, remoteFileSystem, remotePath, clusterType.ordinal(), strictMode);
                         nonLocalRequests.put(remoteLocation, nonLocalReadRequestChain);
                     }
-                    nonLocalRequests.get(remoteLocation).addReadRequest(readRequest);
+                    nonLocalRequests.get(remoteLocation).addReadRequest(readRequestPool, backendReadStart,
+                            backendReadEnd,
+                            actualReadStart,
+                            actualReadEnd,
+                            buffer,
+                            bufferOffest,
+                            fileSize);
                 }
                 else {
                     log.debug(String.format("Sending block %d to remoteReadRequestChain", blockNum));
                     if (remoteReadRequestChain == null) {
                         remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath);
                     }
-                    remoteReadRequestChain.addReadRequest(readRequest);
+                    remoteReadRequestChain.addReadRequest(readRequestPool, backendReadStart,
+                            backendReadEnd,
+                            actualReadStart,
+                            actualReadEnd,
+                            buffer,
+                            bufferOffest,
+                            fileSize);
                 }
             }
         }
