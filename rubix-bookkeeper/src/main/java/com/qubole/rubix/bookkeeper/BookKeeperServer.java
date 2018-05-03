@@ -18,6 +18,9 @@ import com.qubole.rubix.spi.BookKeeperService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
 import org.apache.thrift.shaded.server.TServer;
 import org.apache.thrift.shaded.server.TThreadPoolServer;
 import org.apache.thrift.shaded.transport.TServerSocket;
@@ -30,65 +33,75 @@ import static com.qubole.rubix.spi.CacheConfig.getServerPort;
 /**
  * Created by stagra on 15/2/16.
  */
-public class BookKeeperServer
+public class BookKeeperServer extends Configured implements Tool
 {
-    public static BookKeeper bookKeeper;
-    public static BookKeeperService.Processor processor;
+  public static BookKeeper bookKeeper;
+  public static BookKeeperService.Processor processor;
 
-    public static Configuration conf;
+  public static Configuration conf;
 
-    private static TServer server;
+  private static TServer server;
 
-    private static Log log = LogFactory.getLog(BookKeeperServer.class.getName());
+  private static Log log = LogFactory.getLog(BookKeeperServer.class.getName());
 
-    private BookKeeperServer()
-    {}
+  private BookKeeperServer()
+  {
+  }
 
-    public static void main(String[] args)
+  public static void main(String[] args) throws Exception
+  {
+    ToolRunner.run(new Configuration(), new BookKeeperServer(), args);
+  }
+
+  @Override
+  public int run(String[] args) throws Exception
+  {
+    conf = this.getConf();
+    Runnable bookKeeperServer = new Runnable()
     {
-        conf = new Configuration();
+      public void run()
+      {
+        startServer(conf);
+      }
+    };
+    new Thread(bookKeeperServer).run();
+    return 0;
+  }
 
-        Runnable bookKeeperServer = new Runnable() {
-            public void run()
-            {
-                startServer(conf);
-            }
-        };
-        new Thread(bookKeeperServer).run();
+  public static void startServer(Configuration conf)
+  {
+    bookKeeper = new BookKeeper(conf);
+    DiskMonitorService diskMonitorService = new DiskMonitorService(conf, bookKeeper);
+    diskMonitorService.startAsync();
+    processor = new BookKeeperService.Processor(bookKeeper);
+    log.info("Starting BookKeeperServer on port " + getServerPort(conf));
+    try {
+      TServerTransport serverTransport = new TServerSocket(getServerPort(conf));
+      server = new TThreadPoolServer(new TThreadPoolServer
+          .Args(serverTransport)
+          .processor(processor)
+          .maxWorkerThreads(getServerMaxThreads(conf)));
+
+      server.serve();
+    }
+    catch (TTransportException e) {
+      e.printStackTrace();
+      log.error(String.format("Error starting BookKeeper server %s", Throwables.getStackTraceAsString(e)));
+    }
+  }
+
+  public static void stopServer()
+  {
+    server.stop();
+  }
+
+  @VisibleForTesting
+  public static boolean isServerUp()
+  {
+    if (server != null) {
+      return server.isServing();
     }
 
-    public static void startServer(Configuration conf)
-    {
-        bookKeeper = new BookKeeper(conf);
-        processor = new BookKeeperService.Processor(bookKeeper);
-        log.info("Starting BookKeeperServer on port " + getServerPort(conf));
-        try {
-            TServerTransport serverTransport = new TServerSocket(getServerPort(conf));
-            server = new TThreadPoolServer(new TThreadPoolServer
-                    .Args(serverTransport)
-                    .processor(processor)
-                    .maxWorkerThreads(getServerMaxThreads(conf)));
-
-            server.serve();
-        }
-        catch (TTransportException e) {
-            e.printStackTrace();
-            log.error(String.format("Error starting BookKeeper server %s", Throwables.getStackTraceAsString(e)));
-        }
-    }
-
-    public static void stopServer()
-    {
-        server.stop();
-    }
-
-    @VisibleForTesting
-    public static boolean isServerUp()
-    {
-        if (server != null) {
-            return server.isServing();
-        }
-
-        return false;
-    }
+    return false;
+  }
 }

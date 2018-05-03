@@ -12,117 +12,135 @@
  */
 package com.qubole.rubix.core;
 
+import java.util.Arrays;
+
 /**
  * Created by stagra on 4/1/16.
  */
 public class ReadRequest
 {
-    /*
-     * Encapsulates two forms of request
-     * 1. The actual request that client had made, this might not be block aligned
-     * 2. The backend request that will be generated from acutal request after aligning it to block boundaries
-     *
-     * All ends i.e actualReadEnd, backendReadEnd are exclusive and that byte will not be read
-     */
-    long backendReadStart;
-    long backendReadEnd;
+  /*
+   * Encapsulates two forms of request
+   * 1. The actual request that client had made, this might not be block aligned
+   * 2. The backend request that will be generated from acutal request after aligning it to block boundaries
+   *
+   * All ends i.e actualReadEnd, backendReadEnd are exclusive and that byte will not be read
+   */
+  long backendReadStart;
+  long backendReadEnd;
 
-    long actualReadStart;
-    long actualReadEnd;
+  long actualReadStart;
+  long actualReadEnd;
 
-    byte[] destBuffer;
-    int destBufferOffset;
+  byte[] destBuffer;
+  int destBufferOffset;
 
-    long backendFileSize;
+  long backendFileSize;
 
-    public ReadRequest(long backendReadStart, long backendReadEnd, long actualReadStart, long actualReadEnd, byte[] destBuffer, int destBufferOffset, long backendFileSize)
-    {
-        this.backendReadStart = backendReadStart;
-        this.backendReadEnd = backendReadEnd;
-        this.actualReadStart = actualReadStart;
-        this.actualReadEnd = actualReadEnd;
-        this.destBuffer = destBuffer;
-        this.destBufferOffset = destBufferOffset;
-        this.backendFileSize = backendFileSize;
-    }
+  public ReadRequest() {};
 
-    public long getBackendReadStart()
-    {
-        return backendReadStart;
-    }
+  public ReadRequest(long backendReadStart, long backendReadEnd, long actualReadStart, long actualReadEnd, byte[] destBuffer, int destBufferOffset, long backendFileSize)
+  {
+    this.backendReadStart = backendReadStart;
+    this.backendReadEnd = backendReadEnd;
+    this.actualReadStart = actualReadStart;
+    this.actualReadEnd = actualReadEnd;
+    this.destBuffer = destBuffer;
+    this.destBufferOffset = destBufferOffset;
+    this.backendFileSize = backendFileSize;
+  }
 
-    public void setBackendReadStart(long backendReadStart)
-    {
-        this.backendReadStart = backendReadStart;
-    }
+  public long getBackendReadStart()
+  {
+    return backendReadStart;
+  }
 
-    public long getBackendReadEnd()
-    {
-        return backendReadEnd;
-    }
+  public void setBackendReadStart(long backendReadStart)
+  {
+    this.backendReadStart = backendReadStart;
+  }
 
-    public void setBackendReadEnd(long backendReadEnd)
-    {
-        this.backendReadEnd = backendReadEnd;
-    }
+  public long getBackendReadEnd()
+  {
+    return backendReadEnd;
+  }
 
-    public long getActualReadStart()
-    {
-        return actualReadStart;
-    }
+  public void setBackendReadEnd(long backendReadEnd)
+  {
+    this.backendReadEnd = backendReadEnd;
+  }
 
-    public void setActualReadStart(long actualReadStart)
-    {
-        this.actualReadStart = actualReadStart;
-    }
+  public long getActualReadStart()
+  {
+    return actualReadStart;
+  }
 
-    public long getActualReadEnd()
-    {
-        return actualReadEnd;
-    }
+  public void setActualReadStart(long actualReadStart)
+  {
+    this.actualReadStart = actualReadStart;
+  }
 
-    public void setActualReadEnd(long actualReadEnd)
-    {
-        this.actualReadEnd = actualReadEnd;
-    }
+  public long getActualReadEnd()
+  {
+    return actualReadEnd;
+  }
 
-    public byte[] getDestBuffer()
-    {
-        return destBuffer;
-    }
+  public void setActualReadEnd(long actualReadEnd)
+  {
+    this.actualReadEnd = actualReadEnd;
+  }
 
-    public void setDestBuffer(byte[] destBuffer)
-    {
-        this.destBuffer = destBuffer;
-    }
+  public byte[] getDestBuffer()
+  {
+    return destBuffer;
+  }
 
-    public int getDestBufferOffset()
-    {
-        return destBufferOffset;
-    }
+  public void setDestBuffer(byte[] destBuffer)
+  {
+    this.destBuffer = destBuffer;
+  }
 
-    public void setDestBufferOffset(int destBufferOffset)
-    {
-        this.destBufferOffset = destBufferOffset;
-    }
+  public int getDestBufferOffset()
+  {
+    return destBufferOffset;
+  }
 
-    public long getBackendFileSize()
-    {
-        return backendFileSize;
-    }
+  public void setDestBufferOffset(int destBufferOffset)
+  {
+    this.destBufferOffset = destBufferOffset;
+  }
 
-    public void setBackendFileSize(long backendFileSize)
-    {
-        this.backendFileSize = backendFileSize;
-    }
+  public long getBackendFileSize()
+  {
+    return backendFileSize;
+  }
 
-    public int getActualReadLength()
-    {
-        return (int) (actualReadEnd - actualReadStart);
-    }
+  public void setBackendFileSize(long backendFileSize)
+  {
+    this.backendFileSize = backendFileSize;
+  }
 
-    public int getBackendReadLength()
-    {
-        return (int) (backendReadEnd - backendReadStart);
-    }
+  public int getActualReadLength()
+  {
+    return (int) (actualReadEnd - actualReadStart);
+  }
+
+  public int getBackendReadLength()
+  {
+    return (int) (backendReadEnd - backendReadStart);
+  }
+
+  public ReadRequest clone()
+  {
+    ReadRequest otherRequest = new ReadRequest();
+    otherRequest.backendReadStart = this.backendReadStart;
+    otherRequest.backendReadEnd = this.backendReadEnd;
+    otherRequest.actualReadStart = this.actualReadStart;
+    otherRequest.actualReadEnd = this.actualReadEnd;
+    otherRequest.destBuffer = Arrays.copyOf(this.destBuffer, this.destBuffer.length);
+    otherRequest.destBufferOffset = this.destBufferOffset;
+    otherRequest.backendFileSize = this.backendFileSize;
+
+    return otherRequest;
+  }
 }
