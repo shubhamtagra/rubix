@@ -14,6 +14,7 @@ package com.qubole.rubix.core;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
+import com.google.common.cache.Cache;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.RetryingBookkeeperClient;
 import org.apache.commons.logging.Log;
@@ -49,11 +50,13 @@ public class RemoteReadRequestChain extends ReadRequestChain
 
   private BookKeeperFactory bookKeeperFactory;
 
+  private Cache<String, byte[]> dataCache;
+
   private static final Log log = LogFactory.getLog(RemoteReadRequestChain.class);
 
   private String localFile;
 
-  public RemoteReadRequestChain(FSDataInputStream inputStream, String localfile, ByteBuffer directBuffer, byte[] affixBuffer)
+  public RemoteReadRequestChain(Cache<String, byte[]> dataCache, FSDataInputStream inputStream, String localfile, ByteBuffer directBuffer, byte[] affixBuffer)
       throws IOException
   {
     this(inputStream,
@@ -61,6 +64,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
         directBuffer,
         affixBuffer,
         new BookKeeperFactory());
+    this.dataCache = dataCache;
   }
 
   public RemoteReadRequestChain(FSDataInputStream inputStream, String localfile, ByteBuffer directBuffer, byte[] affixBuffer, BookKeeperFactory bookKeeperFactory)
@@ -78,7 +82,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
   public RemoteReadRequestChain(FSDataInputStream inputStream, String fileName)
       throws IOException
   {
-    this(inputStream, fileName, ByteBuffer.allocate(100), new byte[100]);
+    this(null, inputStream, fileName, ByteBuffer.allocate(100), new byte[100]);
   }
 
   public Integer call()
@@ -112,22 +116,22 @@ public class RemoteReadRequestChain extends ReadRequestChain
         int suffixBufferLength = (int) (readRequest.getBackendReadEnd() - readRequest.getActualReadEnd());
         log.debug(String.format("PrefixLength: %d SuffixLength: %d", prefixBufferLength, suffixBufferLength));
 
-        if (prefixBufferLength > 0) {
+        /*if (prefixBufferLength > 0) {
           log.debug(String.format("Trying to Read %d bytes into prefix buffer", prefixBufferLength));
           totalPrefixRead += readIntoBuffer(affixBuffer, 0, prefixBufferLength);
           log.debug(String.format("Read %d bytes into prefix buffer", prefixBufferLength));
           copyIntoCache(fileChannel, affixBuffer, 0, prefixBufferLength, readRequest.backendReadStart);
           log.debug(String.format("Copied %d prefix bytes into cache", prefixBufferLength));
-        }
+        }*/
 
         log.debug(String.format("Trying to Read %d bytes into destination buffer", readRequest.getActualReadLength()));
         int readBytes = readIntoBuffer(readRequest.getDestBuffer(), readRequest.destBufferOffset, readRequest.getActualReadLength());
         log.debug(String.format("Read %d bytes into destination buffer", readBytes));
-        copyIntoCache(fileChannel, readRequest.destBuffer, readRequest.destBufferOffset, readBytes, readRequest.actualReadStart);
+        copyIntoCache(readRequest.remotePath, fileChannel, readRequest.destBuffer, readRequest.destBufferOffset, readBytes, readRequest.actualReadStart, readRequest.actualReadEnd);
         log.debug(String.format("Copied %d requested bytes into cache", readBytes));
         totalRequestedRead += readBytes;
 
-        if (suffixBufferLength > 0) {
+        /*if (suffixBufferLength > 0) {
           // If already in reading actually required data we get a eof, then there should not have been a suffix request
           checkState(readBytes == readRequest.getActualReadLength(), "Actual read less than required, still requested for suffix");
           log.debug(String.format("Trying to Read %d bytes into suffix buffer", suffixBufferLength));
@@ -135,7 +139,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
           log.debug(String.format("Read %d bytes into suffix buffer", suffixBufferLength));
           copyIntoCache(fileChannel, affixBuffer, 0, suffixBufferLength, readRequest.actualReadEnd);
           log.debug(String.format("Copied %d suffix bytes into cache", suffixBufferLength));
-        }
+        }*/
       }
       log.info(String.format("Read %d bytes from remote localFile, added %d to destination buffer", totalPrefixRead + totalRequestedRead + totalSuffixRead, totalRequestedRead));
       return totalRequestedRead;
@@ -159,24 +163,12 @@ public class RemoteReadRequestChain extends ReadRequestChain
     return nread;
   }
 
-  private int copyIntoCache(FileChannel fileChannel, byte[] destBuffer, int destBufferOffset, int length, long cacheReadStart)
+  private int copyIntoCache(String remotePath, FileChannel fileChannel, byte[] destBuffer, int destBufferOffset, int length, long cacheReadStart, long cacheReadEnd)
       throws IOException
   {
-    log.info(String.format("Trying to copy [%d - %d] bytes into cache from destination buffer offset %d into localFile %s", cacheReadStart, cacheReadStart + length, destBufferOffset, localFile));
-    long start = System.nanoTime();
-    int leftToWrite = length;
-    int writtenSoFar = 0;
-    while (leftToWrite > 0) {
-      int writeInThisCycle = Math.min(leftToWrite, directBuffer.capacity());
-      directBuffer.clear();
-      directBuffer.put(destBuffer, destBufferOffset + writtenSoFar, writeInThisCycle);
-      directBuffer.flip();
-      int nwrite = fileChannel.write(directBuffer, cacheReadStart + writtenSoFar);
-      writtenSoFar += nwrite;
-      leftToWrite -= nwrite;
-    }
-    warmupPenalty += System.nanoTime() - start;
-    return writtenSoFar;
+    String key = remotePath + cacheReadStart + cacheReadEnd;
+    dataCache.put(key, destBuffer);
+    return destBuffer.length;
   }
 
   public ReadRequestChainStats getStats()

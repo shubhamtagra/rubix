@@ -37,10 +37,26 @@ public class ReadRequest
 
   long backendFileSize;
 
+  String remotePath;
+
   public ReadRequest() {};
 
   public ReadRequest(long backendReadStart, long backendReadEnd, long actualReadStart, long actualReadEnd, byte[] destBuffer, int destBufferOffset, long backendFileSize)
   {
+    this(
+            null,
+            backendReadStart,
+            backendReadEnd,
+            actualReadStart,
+            actualReadEnd,
+            destBuffer,
+            destBufferOffset,
+            backendFileSize);
+  }
+
+  public ReadRequest(String remotePath, long backendReadStart, long backendReadEnd, long actualReadStart, long actualReadEnd, byte[] destBuffer, int destBufferOffset, long backendFileSize)
+  {
+    this.remotePath = remotePath;
     this.backendReadStart = backendReadStart;
     this.backendReadEnd = backendReadEnd;
     this.actualReadStart = actualReadStart;
@@ -147,5 +163,15 @@ public class ReadRequest
     otherRequest.backendFileSize = this.backendFileSize;
 
     return otherRequest;
+  }
+
+  @Override
+  public String toString()
+  {
+    StringBuilder builder = new StringBuilder();
+    return builder.append("path: ").append(remotePath).append('\n')
+            .append("actualReadStart: ").append(actualReadStart).append('\n')
+            .append("actualReadEnd: ").append(actualReadEnd).append('\n')
+            .toString();
   }
 }

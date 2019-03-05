@@ -14,6 +14,8 @@ package com.qubole.rubix.core;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
@@ -83,6 +85,9 @@ public class CachingInputStream extends FSInputStream
   private int bufferSize;
   private BookKeeperFactory bookKeeperFactory;
 
+  private static Cache<String, byte[]> dataCache;
+  private static Boolean lock = true;
+
   public CachingInputStream(FileSystem parentFs, Path backendPath, Configuration conf,
                             CachingFileSystemStats statsMbean, ClusterType clusterType,
                             BookKeeperFactory bookKeeperFactory, FileSystem remoteFileSystem,
@@ -135,6 +140,14 @@ public class CachingInputStream extends FSInputStream
   {
     this.conf = conf;
     this.strictMode = CacheConfig.isStrictMode(conf);
+    if (dataCache == null) {
+      synchronized (lock) {
+        if (dataCache == null) {
+          dataCache = CacheBuilder.newBuilder()
+                  .build();
+        }
+      }
+    }
     try {
       this.bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf);
       this.localPath = CacheUtil.getLocalPath(backendPath, conf);
@@ -349,7 +362,8 @@ public class CachingInputStream extends FSInputStream
       }
       int bufferOffest = offset + lengthAlreadyConsidered;
 
-      ReadRequest readRequest = new ReadRequest(backendReadStart,
+      ReadRequest readRequest = new ReadRequest(remotePath,
+              backendReadStart,
           backendReadEnd,
           actualReadStart,
           actualReadEnd,
@@ -374,7 +388,7 @@ public class CachingInputStream extends FSInputStream
             directReadBuffer = bufferPool.getBuffer(diskReadBufferSize);
           }
           if (cachedReadRequestChain == null) {
-            cachedReadRequestChain = new CachedReadRequestChain(remoteFileSystem, remotePath, directReadBuffer,
+            cachedReadRequestChain = new CachedReadRequestChain(dataCache, remoteFileSystem, remotePath, directReadBuffer,
                     statistics, conf, bookKeeperFactory);
           }
           cachedReadRequestChain.addReadRequest(readRequest);
@@ -445,7 +459,7 @@ public class CachingInputStream extends FSInputStream
                 affixBuffer = new byte[blockSize];
               }
               if (remoteReadRequestChain == null) {
-                remoteReadRequestChain = new RemoteReadRequestChain(getParentDataInputStream(), localPath, directWriteBuffer, affixBuffer);
+                remoteReadRequestChain = new RemoteReadRequestChain(dataCache, getParentDataInputStream(), localPath, directWriteBuffer, affixBuffer);
               }
             }
             catch (IOException e) {

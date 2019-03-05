@@ -14,6 +14,7 @@ package com.qubole.rubix.core;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
+import com.google.common.cache.Cache;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.RetryingBookkeeperClient;
@@ -48,13 +49,15 @@ public class CachedReadRequestChain extends ReadRequestChain
 
   private ByteBuffer directBuffer;
   private int corruptedFileCount;
+  private Cache<String, byte[]> dataCache;
 
   private static final Log log = LogFactory.getLog(CachedReadRequestChain.class);
 
-  public CachedReadRequestChain(FileSystem remoteFileSystem, String remotePath, ByteBuffer buffer,
+  public CachedReadRequestChain(Cache<String, byte[]> dataCache, FileSystem remoteFileSystem, String remotePath, ByteBuffer buffer,
                                 FileSystem.Statistics statistics, Configuration conf, BookKeeperFactory factory)
       throws IOException
   {
+    this.dataCache = dataCache;
     this.conf = conf;
     this.remotePath = remotePath;
     this.remoteFileSystem = remoteFileSystem;
@@ -67,7 +70,7 @@ public class CachedReadRequestChain extends ReadRequestChain
   public CachedReadRequestChain(FileSystem remoteFileSystem, String remotePath, Configuration conf, BookKeeperFactory factory)
       throws IOException
   {
-    this(remoteFileSystem, remotePath, ByteBuffer.allocate(1024), null, conf, factory);
+    this(null, remoteFileSystem, remotePath, ByteBuffer.allocate(1024), null, conf, factory);
   }
 
   @VisibleForTesting
@@ -106,7 +109,7 @@ public class CachedReadRequestChain extends ReadRequestChain
         int nread = 0;
         int leftToRead = readRequest.getActualReadLength();
         log.debug(String.format("Processing readrequest %d-%d, length %d", readRequest.actualReadStart, readRequest.actualReadEnd, leftToRead));
-        while (nread < readRequest.getActualReadLength()) {
+        /*while (nread < readRequest.getActualReadLength()) {
           int readInThisCycle = Math.min(leftToRead, directBuffer.capacity());
           directBuffer.clear();
           int nbytes = fileChannel.read(directBuffer, readRequest.getActualReadStart() + nread);
@@ -118,6 +121,16 @@ public class CachedReadRequestChain extends ReadRequestChain
           directBuffer.get(readRequest.getDestBuffer(), readRequest.getDestBufferOffset() + nread, transferBytes);
           leftToRead -= transferBytes;
           nread += transferBytes;
+        }*/
+        String key = remotePath + readRequest.actualReadStart + readRequest.actualReadEnd;
+        byte[] cached = dataCache.getIfPresent(key);
+        if (cached == null) {
+          throw new RuntimeException("Couldnt find data in cache for RR: " + readRequest);
+        }
+
+        for (byte b : cached) {
+          readRequest.getDestBuffer()[readRequest.getDestBufferOffset() + nread] = b;
+          nread++;
         }
         log.debug(String.format("CachedFileRead copied data [%d - %d] at buffer offset %d",
                 readRequest.getActualReadStart(),
@@ -126,10 +139,11 @@ public class CachedReadRequestChain extends ReadRequestChain
 
         if (nread != readRequest.getActualReadLength()) {
           needsInvalidation = true;
-          log.error(String.format("Cached read length didn't match with requested read length for file %s. " +
+          throw new RuntimeException("Read lesser data " + nread + " for readRequest " + readRequest);
+          /*log.error(String.format("Cached read length didn't match with requested read length for file %s. " +
                   " Falling back reading from object store.", localCachedFile));
           directDataRead = readFromRemoteFileSystem();
-          return directDataRead;
+          return directDataRead;*/
         }
         else {
           read += nread;
@@ -138,10 +152,11 @@ public class CachedReadRequestChain extends ReadRequestChain
       log.info(String.format("Read %d bytes from cached file", read));
     }
     catch (Exception ex) {
-      log.error(String.format("Could not read data from cached file %s. Falling back reading from object store.", localCachedFile));
+      /*log.error(String.format("Could not read data from cached file %s. Falling back reading from object store.", localCachedFile));
       needsInvalidation = true;
       directDataRead = readFromRemoteFileSystem();
-      return directDataRead;
+      return directDataRead;*/
+      throw new RuntimeException("Unable to read from cache");
     }
     finally {
       if (fis != null) {
