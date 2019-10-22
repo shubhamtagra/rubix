@@ -8,86 +8,34 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.qubole.rubix</groupId>
-    <artifactId>rubix-hadoop2</artifactId>
+    <artifactId>rubix-shaded</artifactId>
 
     <properties>
         <main.basedir>${project.parent.basedir}</main.basedir>
     </properties>
+
     <dependencies>
-
-        <dependency>
-            <groupId>com.google.cloud.bigdataoss</groupId>
-            <!-- Cloud Storage: -->
-            <artifactId>gcs-connector</artifactId>
-            <version>hadoop2-1.9.17</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-common</artifactId>
-            <version>${dep.hadoop2.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-hdfs</artifactId>
-            <version>${dep.hadoop2.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-aws</artifactId>
-            <version>2.6.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-azure</artifactId>
-            <version>2.7.0</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-yarn-api</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>2.7</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>19.0</version>
-        </dependency>
-
         <dependency>
             <groupId>com.qubole.rubix</groupId>
             <artifactId>rubix-spi</artifactId>
         </dependency>
-
+        <dependency>
+            <groupId>com.qubole.rubix</groupId>
+            <artifactId>rubix-common</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.qubole.rubix</groupId>
             <artifactId>rubix-core</artifactId>
         </dependency>
-
-
         <dependency>
-            <groupId>org.testng</groupId>
-            <artifactId>testng</artifactId>
-            <version>${dep.testng.version}</version>
-            <scope>test</scope>
+            <groupId>com.qubole.rubix</groupId>
+            <artifactId>rubix-bookkeeper</artifactId>
         </dependency>
     </dependencies>
 
     <build>
         <plugins>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -111,18 +59,21 @@
                         <configuration>
                             <artifactSet>
                                 <includes>
-                                    <include>com.google.guava:guava</include>
+                                    <include>com.qubole.rubix:rubix-spi</include>
+                                    <include>com.qubole.rubix:rubix-common</include>
+                                    <include>com.qubole.rubix:rubix-core</include>
+                                    <include>com.qubole.rubix:rubix-bookkeeper</include>
+                                    <include>com.qubole.rubix:rubix-hadoop2</include>
+                                    <include>com.qubole.rubix:rubix-presto</include>
                                 </includes>
                             </artifactSet>
-                            <relocations>
+                            <!--<relocations>
                                 <relocation>
                                     <pattern>com.google</pattern>
                                     <shadedPattern>com.google.shaded</shadedPattern>
-                                    <excludes>
-                                        <exclude>com.google.common.reflect</exclude>
-                                    </excludes>
                                 </relocation>
-                            </relocations>
+                            </relocations>-->
+
                         </configuration>
                     </execution>
                 </executions>

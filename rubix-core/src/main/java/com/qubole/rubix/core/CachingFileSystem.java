@@ -17,6 +17,7 @@ import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.RetryingBookkeeperClient;
+import com.qubole.rubix.spi.thrift.BookKeeperService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -56,7 +57,7 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
   private Path workingDir;
 
   private static CachingFileSystemStats statsMBean;
-  public BookKeeperFactory bookKeeperFactory = new BookKeeperFactory();
+  public static BookKeeperFactory bookKeeperFactory = new BookKeeperFactory();
 
   static {
     MBeanExporter exporter = new MBeanExporter(ManagementFactory.getPlatformMBeanServer());
@@ -71,6 +72,11 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     Type type = getClass().getGenericSuperclass();
     ParameterizedType paramType = (ParameterizedType) type;
     return (Class<T>) paramType.getActualTypeArguments()[0];
+  }
+
+  public static void setLocalBookKeeper(BookKeeperService.Iface bookKeeper)
+  {
+    bookKeeperFactory = new BookKeeperFactory(bookKeeper);
   }
 
   public CachingFileSystem()

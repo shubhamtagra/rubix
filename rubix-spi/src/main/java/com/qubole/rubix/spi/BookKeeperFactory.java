@@ -56,7 +56,7 @@ public class BookKeeperFactory
         return this.createBookKeeperClient(host, conf);
       }
       catch (TTransportException e) {
-        log.warn(String.format("Could not create bookkeeper client [%d/%d attempts]", failedStarts, maxRetries));
+        log.warn(String.format("Could not create bookkeeper client to host %s [%d/%d attempts]", host, failedStarts, maxRetries), e);
       }
       try {
         Thread.sleep(retryInterval);

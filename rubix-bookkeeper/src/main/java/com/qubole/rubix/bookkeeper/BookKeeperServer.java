@@ -18,6 +18,7 @@ import com.codahale.metrics.jvm.CachedThreadStatesGaugeSet;
 import com.codahale.metrics.jvm.GarbageCollectorMetricSet;
 import com.codahale.metrics.jvm.MemoryUsageGaugeSet;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.qubole.rubix.bookkeeper.exception.BookKeeperInitializationException;
 import com.qubole.rubix.common.metrics.BookKeeperMetrics;
@@ -56,6 +57,8 @@ public class BookKeeperServer extends Configured implements Tool
 
   private TServer server;
 
+  private BookKeeper localBookKeeper;
+
   private static Log log = LogFactory.getLog(BookKeeperServer.class.getName());
 
   public BookKeeperServer()
@@ -84,7 +87,6 @@ public class BookKeeperServer extends Configured implements Tool
 
   public void startServer(Configuration conf, MetricRegistry metricsRegistry)
   {
-    BookKeeper localBookKeeper;
     this.metrics = metricsRegistry;
     this.bookKeeperMetrics = new BookKeeperMetrics(conf, metrics);
     registerMetrics(conf);
@@ -99,10 +101,15 @@ public class BookKeeperServer extends Configured implements Tool
     }
     catch (BookKeeperInitializationException e) {
       log.error("Could not start BookKeeper daemon. Exception: ", e);
-      return;
+      throw Throwables.propagate(e);
     }
 
     startThriftServer(conf, localBookKeeper);
+  }
+
+  public Optional<BookKeeper> getLocalBookKeeper()
+  {
+    return Optional.fromNullable(localBookKeeper);
   }
 
   void startServer(Configuration conf, BookKeeper bookKeeper, BookKeeperMetrics bookKeeperMetrics)
