@@ -87,6 +87,30 @@ public class BookKeeperServer extends Configured implements Tool
 
   public void startServer(Configuration conf, MetricRegistry metricsRegistry)
   {
+    startServer(conf, metricsRegistry, false);
+  }
+
+  public BookKeeper startServer(final Configuration conf, MetricRegistry metricsRegistry, boolean embedded)
+  {
+    setupServer(conf, metricsRegistry);
+    if (embedded) {
+      new Thread(new Runnable()
+      {
+        @Override
+        public void run()
+        {
+          startThriftServer(conf, localBookKeeper);
+        }
+      }).start();
+    }
+    else {
+      startThriftServer(conf, localBookKeeper);
+    }
+    return localBookKeeper;
+  }
+
+  private void setupServer(Configuration conf, MetricRegistry metricsRegistry)
+  {
     this.metrics = metricsRegistry;
     this.bookKeeperMetrics = new BookKeeperMetrics(conf, metrics);
     registerMetrics(conf);
@@ -103,10 +127,7 @@ public class BookKeeperServer extends Configured implements Tool
       log.error("Could not start BookKeeper daemon. Exception: ", e);
       throw Throwables.propagate(e);
     }
-
-    startThriftServer(conf, localBookKeeper);
   }
-
   public Optional<BookKeeper> getLocalBookKeeper()
   {
     return Optional.fromNullable(localBookKeeper);

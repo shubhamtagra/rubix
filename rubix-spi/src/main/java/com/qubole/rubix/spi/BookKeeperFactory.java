@@ -32,6 +32,11 @@ public class BookKeeperFactory
   {
   }
 
+  public boolean isBookKeeperInitialized()
+  {
+    return bookKeeper != null;
+  }
+
   public BookKeeperFactory(BookKeeperService.Iface bookKeeper)
   {
     this.bookKeeper = bookKeeper;

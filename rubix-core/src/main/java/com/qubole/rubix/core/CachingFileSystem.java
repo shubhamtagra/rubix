@@ -58,6 +58,7 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
 
   private static CachingFileSystemStats statsMBean;
   public static BookKeeperFactory bookKeeperFactory = new BookKeeperFactory();
+  public static boolean embeddedMode;
 
   static {
     MBeanExporter exporter = new MBeanExporter(ManagementFactory.getPlatformMBeanServer());
@@ -74,8 +75,14 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     return (Class<T>) paramType.getActualTypeArguments()[0];
   }
 
+  public static void setEmbeddedMode()
+  {
+    embeddedMode = true;
+  }
+
   public static void setLocalBookKeeper(BookKeeperService.Iface bookKeeper)
   {
+    embeddedMode = true;
     bookKeeperFactory = new BookKeeperFactory(bookKeeper);
   }
 
@@ -126,6 +133,11 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
       return inputStream;
     }
 
+    if (embeddedMode && !bookKeeperFactory.isBookKeeperInitialized()) {
+      // Embedded mode but bookKeeper not set
+      log.error("Rubix in embedded mode but BookKeeper is not set, skipping caches");
+      return inputStream;
+    }
     Path originalPath = new Path(getOriginalURI(path.toUri()).getScheme(), path.toUri().getAuthority(),
         path.toUri().getPath());
 
@@ -250,7 +262,7 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
   @Override
   public BlockLocation[] getFileBlockLocations(FileStatus file, long start, long len) throws IOException
   {
-    if (cacheSkipped) {
+    if (cacheSkipped || (embeddedMode && !bookKeeperFactory.isBookKeeperInitialized())) {
       return fs.getFileBlockLocations(file, start, len);
     }
 
