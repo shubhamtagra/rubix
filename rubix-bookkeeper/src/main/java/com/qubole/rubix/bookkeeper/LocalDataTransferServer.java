@@ -85,7 +85,7 @@ public class LocalDataTransferServer extends Configured implements Tool
     registerMetrics(conf);
 
     localServer = new LocalServer(conf);
-    new Thread(localServer).run();
+    new Thread(localServer).start();
   }
 
   /**
