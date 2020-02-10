@@ -35,6 +35,7 @@ import org.apache.thrift.shaded.transport.TTransportException;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 
 import static com.qubole.rubix.spi.CacheConfig.getServerMaxThreads;
@@ -105,7 +106,8 @@ public class BookKeeperServer extends Configured implements Tool
     processor = new BookKeeperService.Processor(bookKeeper);
     log.info("Starting BookKeeperServer on port " + getServerPort(conf));
     try {
-      TServerTransport serverTransport = new TServerSocket(getServerPort(conf));
+      TServerTransport serverTransport = new TServerSocket(
+              new TServerSocket.ServerSocketTransportArgs().bindAddr(new InetSocketAddress(getServerPort(conf))).backlog(Integer.MAX_VALUE));
       server = new TThreadPoolServer(new TThreadPoolServer
           .Args(serverTransport)
           .processor(processor)
