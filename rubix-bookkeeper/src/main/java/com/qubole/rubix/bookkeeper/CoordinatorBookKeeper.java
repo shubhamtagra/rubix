@@ -63,22 +63,24 @@ public class CoordinatorBookKeeper extends BookKeeper
   @Override
   public void handleHeartbeat(String workerHostname, HeartbeatStatus heartbeatStatus)
   {
-    liveWorkerCache.put(workerHostname, true);
-    log.debug("Received heartbeat from " + workerHostname);
+    if (CacheConfig.isHeartbeatEnabled(conf) || !CacheConfig.isEmbeddedModeEnabled(conf)) {
+      liveWorkerCache.put(workerHostname, true);
+      log.debug("Received heartbeat from " + workerHostname);
 
-    if (isValidationEnabled) {
-      if (heartbeatStatus.cachingValidationSucceeded) {
-        cachingValidatedWorkerCache.put(workerHostname, true);
-      }
-      else {
-        log.error(String.format("Caching validation failed for worker node (hostname: %s)", workerHostname));
-      }
+      if (isValidationEnabled) {
+        if (heartbeatStatus.cachingValidationSucceeded) {
+          cachingValidatedWorkerCache.put(workerHostname, true);
+        }
+        else {
+          log.error(String.format("Caching validation failed for worker node (hostname: %s)", workerHostname));
+        }
 
-      if (heartbeatStatus.fileValidationSucceeded) {
-        fileValidatedWorkerCache.put(workerHostname, true);
-      }
-      else {
-        log.error(String.format("File validation failed for worker node (hostname: %s)", workerHostname));
+        if (heartbeatStatus.fileValidationSucceeded) {
+          fileValidatedWorkerCache.put(workerHostname, true);
+        }
+        else {
+          log.error(String.format("File validation failed for worker node (hostname: %s)", workerHostname));
+        }
       }
     }
   }

@@ -558,20 +558,22 @@ public class BaseServerTest
   {
     private boolean isServerUp;
 
-    public void startServer(Configuration conf, MetricRegistry metricRegistry)
+    public BookKeeper startServer(Configuration conf, MetricRegistry metricRegistry)
     {
+      BookKeeper bookKeeper;
       metrics = metricRegistry;
       bookKeeperMetrics = new BookKeeperMetrics(conf, metrics);
       try {
         // Initializing this BookKeeper here allows it to register the live worker count metric for testing.
-        new CoordinatorBookKeeper(conf, bookKeeperMetrics);
+        bookKeeper = new CoordinatorBookKeeper(conf, bookKeeperMetrics);
       }
       catch (FileNotFoundException e) {
         log.error("Cache directories could not be created", e);
-        return;
+        return null;
       }
       registerMetrics(conf);
       isServerUp = true;
+      return bookKeeper;
     }
 
     public void stopServer()
@@ -599,13 +601,14 @@ public class BaseServerTest
   {
     private boolean isServerUp;
 
-    public void startServer(Configuration conf, MetricRegistry metricRegistry)
+    public BookKeeper startServer(Configuration conf, MetricRegistry metricRegistry)
     {
+      BookKeeper bookKeeper = null;
       final BookKeeperFactory bookKeeperFactory = mock(BookKeeperFactory.class);
       try {
         when(bookKeeperFactory.createBookKeeperClient(anyString(), ArgumentMatchers.<Configuration>any())).thenReturn(
             new RetryingBookkeeperClient(
-                new TSocket("localhost", CacheConfig.getServerPort(conf), CacheConfig.getServerConnectTimeout(conf)),
+                new TSocket("localhost", CacheConfig.getBookKeeperServerPort(conf), CacheConfig.getServerConnectTimeout(conf)),
                 CacheConfig.getMaxRetries(conf)));
       }
       catch (TTransportException e) {
@@ -615,14 +618,15 @@ public class BaseServerTest
       metrics = metricRegistry;
       bookKeeperMetrics = new BookKeeperMetrics(conf, metrics);
       try {
-        new WorkerBookKeeper(conf, bookKeeperMetrics, bookKeeperFactory);
+        bookKeeper = new WorkerBookKeeper(conf, bookKeeperMetrics, bookKeeperFactory);
       }
       catch (FileNotFoundException e) {
         log.error("Cache directories could not be created", e);
-        return;
+        return bookKeeper;
       }
       registerMetrics(conf);
       isServerUp = true;
+      return bookKeeper;
     }
 
     public void stopServer()

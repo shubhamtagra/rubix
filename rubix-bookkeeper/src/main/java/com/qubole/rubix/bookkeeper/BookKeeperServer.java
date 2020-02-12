@@ -38,20 +38,20 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 
+import static com.qubole.rubix.spi.CacheConfig.getBookKeeperServerPort;
 import static com.qubole.rubix.spi.CacheConfig.getServerMaxThreads;
-import static com.qubole.rubix.spi.CacheConfig.getServerPort;
 
 /**
  * Created by stagra on 15/2/16.
  */
 public class BookKeeperServer extends Configured implements Tool
 {
-  public BookKeeper bookKeeper;
   public BookKeeperService.Processor processor;
 
   // Registry for gathering & storing necessary metrics
   protected MetricRegistry metrics;
   protected BookKeeperMetrics bookKeeperMetrics;
+  private BookKeeper localBookKeeper;
 
   public Configuration conf;
 
@@ -83,31 +83,57 @@ public class BookKeeperServer extends Configured implements Tool
     return 0;
   }
 
-  public void startServer(Configuration conf, MetricRegistry metricsRegistry)
+  public BookKeeper startServer(final Configuration conf, MetricRegistry metricsRegistry)
   {
-    metrics = metricsRegistry;
-    bookKeeperMetrics = new BookKeeperMetrics(conf, metrics);
+    setupServer(conf, metricsRegistry);
+    if (CacheConfig.isEmbeddedModeEnabled(conf)) {
+      new Thread(new Runnable()
+      {
+        @Override
+        public void run()
+        {
+          startThriftServer(conf, localBookKeeper);
+        }
+      }).start();
+    }
+    else {
+      startThriftServer(conf, localBookKeeper);
+    }
 
+    return localBookKeeper;
+  }
+
+  public void setupServer(Configuration conf, MetricRegistry metricsRegistry)
+  {
+    conf = new Configuration(conf);
+    CacheConfig.setCacheDataEnabled(conf, false);
+    CacheConfig.disableFSCaches(conf);
+
+    this.metrics = metricsRegistry;
+    this.bookKeeperMetrics = new BookKeeperMetrics(conf, metrics);
     registerMetrics(conf);
 
     try {
       if (CacheConfig.isOnMaster(conf)) {
-        bookKeeper = new CoordinatorBookKeeper(conf, bookKeeperMetrics);
+        localBookKeeper = new CoordinatorBookKeeper(conf, bookKeeperMetrics);
       }
       else {
-        bookKeeper = new WorkerBookKeeper(conf, bookKeeperMetrics);
+        localBookKeeper = new WorkerBookKeeper(conf, bookKeeperMetrics);
       }
     }
     catch (FileNotFoundException e) {
       log.error("Cache directories could not be created", e);
-      return;
+      throw Throwables.propagate(e);
     }
+  }
 
+  private void startThriftServer(Configuration conf, BookKeeper bookKeeper)
+  {
     processor = new BookKeeperService.Processor(bookKeeper);
-    log.info("Starting BookKeeperServer on port " + getServerPort(conf));
+    log.info("Starting BookKeeperServer on port " + getBookKeeperServerPort(conf));
     try {
       TServerTransport serverTransport = new TServerSocket(
-              new TServerSocket.ServerSocketTransportArgs().bindAddr(new InetSocketAddress(getServerPort(conf))).backlog(Integer.MAX_VALUE));
+              new TServerSocket.ServerSocketTransportArgs().bindAddr(new InetSocketAddress(getBookKeeperServerPort(conf))).backlog(Integer.MAX_VALUE));
       server = new TThreadPoolServer(new TThreadPoolServer
           .Args(serverTransport)
           .processor(processor)
@@ -140,6 +166,7 @@ public class BookKeeperServer extends Configured implements Tool
       log.error("Metrics reporters could not be closed", e);
     }
     server.stop();
+    log.info("Bookkeeper Server Stopped");
   }
 
   protected void removeMetrics()

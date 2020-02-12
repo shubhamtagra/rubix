@@ -16,7 +16,6 @@ import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Throwables;
 import com.google.common.base.Ticker;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -98,7 +97,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
   String nodeName;
   static String nodeHostName;
   static String nodeHostAddress;
-  private final Configuration conf;
+  protected final Configuration conf;
   private static Integer lock = 1;
   private List<String> nodes;
   int currentNodeIndex = -1;
@@ -170,10 +169,13 @@ public abstract class BookKeeper implements BookKeeperService.Iface
             java.nio.file.Path path = Paths.get(dirPrefix + i, dirSuffix, "*");
             DiskUtils.clearDirectory(path.toString());
           }
+
+          java.nio.file.Path path = Paths.get(dirPrefix, dirSuffix, "*");
+          DiskUtils.clearDirectory(path.toString());
         }
       }
       catch (IOException ex) {
-        log.error("Could not clean up the old cached files");
+        log.error("Could not clean up the old cached files", ex);
       }
     }
   }
@@ -276,7 +278,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       }
     }
     catch (ExecutionException e) {
-      log.error(String.format("Could not fetch Metadata for %s : %s", remotePath, Throwables.getStackTraceAsString(e)));
+      log.error(String.format("Could not fetch Metadata for %s : %s", remotePath), e);
       throw new TException(e);
     }
     endBlock = setCorrectEndBlock(endBlock, fileLength, remotePath);
@@ -410,7 +412,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     //md will be null when 2 users try to update the file in parallel and both their entries are invalidated.
     // TODO: find a way to optimize this so that the file doesn't have to be read again in next request (new data is stored instead of invalidation)
     if (md == null) {
-      log.info(String.format("Could not update the metadata for file %s", remotePath));
+      log.warn(String.format("Could not update the metadata for file %s", remotePath));
       return;
     }
     if (isInvalidationRequired(md.getLastModified(), lastModified)) {
@@ -469,7 +471,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
   {
     if (CacheConfig.isParallelWarmupEnabled(conf)) {
       startRemoteFetchProcessor();
-      log.info("Adding to the queue Path : " + remotePath + " Offste : " + offset + " Length " + length);
+      log.debug("Adding to the queue Path : " + remotePath + " Offste : " + offset + " Length " + length);
       fetchProcessor.addToProcessQueue(remotePath, offset, length, fileSize, lastModified);
       return true;
     }
@@ -497,7 +499,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
         return info;
       }
       catch (Exception e) {
-        log.error(String.format("Could not fetch FileStatus from remote file system for %s : %s", remotePath, Throwables.getStackTraceAsString(e)));
+        log.error(String.format("Could not fetch FileStatus from remote file system for %s : %s", remotePath), e);
       }
     }
     else {
@@ -505,7 +507,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
         return fileInfoCache.get(remotePath);
       }
       catch (ExecutionException e) {
-        log.error(String.format("Could not fetch FileInfo from Cache for %s : %s", remotePath, Throwables.getStackTraceAsString(e)));
+        log.error(String.format("Could not fetch FileInfo from Cache for %s : %s", remotePath), e);
         throw new TException(e);
       }
     }
@@ -540,7 +542,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
 
           if (fs == null) {
             fs = path.getFileSystem(conf);
-            log.info("Initializing FileSystem " + fs.toString() + " for Path " + path.toString());
             fs.initialize(path.toUri(), conf);
 
             inputStream = fs.open(path, blockSize);
@@ -569,7 +570,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       return true;
     }
     catch (Exception e) {
-      log.warn("Could not cache data: " + Throwables.getStackTraceAsString(e));
+      log.warn("Could not cache data: ", e);
       return false;
     }
     finally {
@@ -579,7 +580,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
           fs.close();
         }
         catch (IOException e) {
-          log.error(Throwables.getStackTraceAsString(e));
+          log.error("Error closing inputStream", e);
         }
       }
     }
@@ -589,7 +590,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
   {
     long lastBlock = (fileLength - 1) / CacheConfig.getBlockSize(conf);
     if (endBlock > (lastBlock + 1)) {
-      log.debug(String.format("Correct endBlock from %d to %d for path %s and length %d", endBlock, lastBlock + 1, remotePath, fileLength));
       endBlock = lastBlock + 1;
     }
 
@@ -652,7 +652,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
           @Override
           public void onRemoval(RemovalNotification<String, FileInfo> notification)
           {
-            log.info("Removed FileInfo for path " + notification.getKey() + " due to " + notification.getCause());
+            log.debug("Removed FileInfo for path " + notification.getKey() + " due to " + notification.getCause());
           }
         })
         .build(CacheLoader.asyncReloading(new CacheLoader<String, FileInfo>()
@@ -660,7 +660,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
           @Override
           public FileInfo load(String s) throws Exception
           {
-            log.info("Fetching FileStatus for : " + s);
             Path path = new Path(s);
             FileSystem fs = path.getFileSystem(conf);
             FileStatus status = fs.getFileStatus(path);
@@ -734,7 +733,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     if (fileMetadataCache != null) {
       FileMetadata metadata = fileMetadataCache.getIfPresent(key);
       if (metadata != null) {
-        log.info("Invalidating file " + key + " from metadata cache");
+        log.debug("Invalidating file " + key + " from metadata cache");
         fileMetadataCache.invalidate(key);
       }
     }

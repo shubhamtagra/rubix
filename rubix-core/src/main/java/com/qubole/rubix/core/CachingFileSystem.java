@@ -12,11 +12,13 @@
  */
 package com.qubole.rubix.core;
 
+import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.ClusterManager;
 import com.qubole.rubix.spi.ClusterType;
+import com.qubole.rubix.spi.thrift.BookKeeperService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -43,7 +45,6 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 
 import static com.qubole.rubix.spi.CacheUtil.skipCache;
 
@@ -62,14 +63,15 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
   private Path workingDir;
 
   private static CachingFileSystemStats statsMBean;
-  public BookKeeperFactory bookKeeperFactory = new BookKeeperFactory();
+  public static BookKeeperFactory bookKeeperFactory;
 
+  public static String statsMBeanBaseName = "rubix:name=stats";
   static {
     MBeanExporter exporter = new MBeanExporter(ManagementFactory.getPlatformMBeanServer());
     statsMBean = new CachingFileSystemStats();
     try {
-      if (!ManagementFactory.getPlatformMBeanServer().isRegistered(new ObjectName("rubix:name=stats"))) {
-        exporter.export("rubix:name=stats", statsMBean);
+      if (!ManagementFactory.getPlatformMBeanServer().isRegistered(new ObjectName(statsMBeanBaseName))) {
+        exporter.export(statsMBeanBaseName, statsMBean);
       }
     }
     catch (MalformedObjectNameException e) {
@@ -90,10 +92,38 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
   {
     try {
       this.fs = getTypeParameterClass().newInstance();
+      if (bookKeeperFactory == null) {
+        bookKeeperFactory = new BookKeeperFactory();
+      }
     }
     catch (InstantiationException | IllegalAccessException e) {
       log.error("cannot instantiate base filesystem ", e);
       Throwables.propagate(e);
+    }
+  }
+
+  public FileSystem getRemoteFileSystem()
+  {
+    return fs;
+  }
+
+  public static void setLocalBookKeeper(BookKeeperService.Iface bookKeeper, String statsMbeanSuffix)
+  {
+    bookKeeperFactory = new BookKeeperFactory(bookKeeper);
+    if (!Strings.isNullOrEmpty(statsMbeanSuffix)) {
+      String mBeanName = statsMBeanBaseName + "," + statsMbeanSuffix;
+      MBeanExporter exporter = new MBeanExporter(ManagementFactory.getPlatformMBeanServer());
+      try {
+        if (ManagementFactory.getPlatformMBeanServer().isRegistered(new ObjectName(statsMBeanBaseName))) {
+          exporter.unexport(statsMBeanBaseName);
+        }
+        if (!ManagementFactory.getPlatformMBeanServer().isRegistered(new ObjectName(mBeanName))) {
+          exporter.export(mBeanName, statsMBean);
+        }
+      }
+      catch (MalformedObjectNameException e) {
+        log.error("Could not export stats mbean", e);
+      }
     }
   }
 
@@ -298,14 +328,8 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
   @Override
   public BlockLocation[] getFileBlockLocations(FileStatus file, long start, long len) throws IOException
   {
-    try {
-      if (!clusterManager.isMaster() || cacheSkipped) {
-        // If in worker node, blockLocation does not matter
-        return fs.getFileBlockLocations(file, start, len);
-      }
-    }
-    catch (ExecutionException e) {
-      log.info("Could not find whether node is Master : ", e);
+    if (cacheSkipped || (CacheConfig.isEmbeddedModeEnabled(getConf()) && !bookKeeperFactory.isBookKeeperInitialized())) {
+      // If in worker node, blockLocation does not matter
       return fs.getFileBlockLocations(file, start, len);
     }
 

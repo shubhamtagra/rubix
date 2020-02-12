@@ -13,7 +13,6 @@
 package com.qubole.rubix.core;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Throwables;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.RetryingBookkeeperClient;
 import org.apache.commons.logging.Log;
@@ -53,15 +52,6 @@ public class RemoteReadRequestChain extends ReadRequestChain
 
   private String localFile;
 
-  public RemoteReadRequestChain(FSDataInputStream inputStream, String localfile, ByteBuffer directBuffer, byte[] affixBuffer)
-  {
-    this(inputStream,
-        localfile,
-        directBuffer,
-        affixBuffer,
-        new BookKeeperFactory());
-  }
-
   public RemoteReadRequestChain(FSDataInputStream inputStream, String localfile, ByteBuffer directBuffer, byte[] affixBuffer, BookKeeperFactory bookKeeperFactory)
   {
     this.inputStream = inputStream;
@@ -75,7 +65,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
   @VisibleForTesting
   public RemoteReadRequestChain(FSDataInputStream inputStream, String fileName)
   {
-    this(inputStream, fileName, ByteBuffer.allocate(100), new byte[100]);
+    this(inputStream, fileName, ByteBuffer.allocate(100), new byte[100], new BookKeeperFactory());
   }
 
   public Integer call()
@@ -135,7 +125,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
           log.debug(String.format("Copied %d suffix bytes into cache", suffixBufferLength));
         }
       }
-      log.info(String.format("Read %d bytes from remote localFile, added %d to destination buffer", totalPrefixRead + totalRequestedRead + totalSuffixRead, totalRequestedRead));
+      log.debug(String.format("Read %d bytes from remote localFile, added %d to destination buffer", totalPrefixRead + totalRequestedRead + totalSuffixRead, totalRequestedRead));
       return totalRequestedRead;
     }
     finally {
@@ -160,7 +150,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
   private int copyIntoCache(FileChannel fileChannel, byte[] destBuffer, int destBufferOffset, int length, long cacheReadStart)
       throws IOException
   {
-    log.info(String.format("Trying to copy [%d - %d] bytes into cache with offset %d into localFile %s", cacheReadStart, cacheReadStart + length, destBufferOffset, localFile));
+    log.debug(String.format("Trying to copy [%d - %d] bytes into cache with offset %d into localFile %s", cacheReadStart, cacheReadStart + length, destBufferOffset, localFile));
     long start = System.nanoTime();
     int leftToWrite = length;
     int writtenSoFar = 0;
@@ -199,7 +189,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
       }
     }
     catch (Exception e) {
-      log.info("Could not update BookKeeper about newly cached blocks: " + Throwables.getStackTraceAsString(e));
+      log.warn("Could not update BookKeeper about newly cached blocks", e);
     }
     finally {
       try {
@@ -209,7 +199,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
         }
       }
       catch (IOException ex) {
-        log.error("Could not close bookkeeper client. Exception: " + ex.toString());
+        log.error("Could not close bookkeeper client. Exception", ex);
       }
     }
   }

@@ -10,40 +10,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. See accompanying LICENSE file.
  */
+package com.qubole.rubix.prestosql;
 
-package com.qubole.rubix.presto;
-
-import com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem;
 import com.qubole.rubix.core.CachingFileSystem;
-import com.qubole.rubix.core.ClusterManagerInitilizationException;
-import com.qubole.rubix.spi.ClusterType;
+import io.prestosql.plugin.hive.s3.PrestoS3FileSystem;
 import org.apache.hadoop.conf.Configuration;
 
 import java.io.IOException;
 import java.net.URI;
 
 /**
- * Created by Kamesh Vankayala 06/19/2019
+ * Created by stagra on 14/1/16.
  */
-public class CachingPrestoGoogleHadoopFileSystem extends CachingFileSystem<GoogleHadoopFileSystem>
+public class CachingPrestoS3FileSystem extends CachingFileSystem<PrestoS3FileSystem>
 {
-  private static final String SCHEME = "gs";
-
-  public CachingPrestoGoogleHadoopFileSystem()
+  public CachingPrestoS3FileSystem()
   {
     super();
   }
 
+  private static final String SCHEME = "s3n";
+
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException
   {
-    try {
-      initializeClusterManager(conf, ClusterType.PRESTO_CLUSTER_MANAGER);
-      super.initialize(uri, conf);
-    }
-    catch (ClusterManagerInitilizationException ex) {
-      throw new IOException(ex);
-    }
+    super.initialize(uri, conf);
   }
 
   public String getScheme()

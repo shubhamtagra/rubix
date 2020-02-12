@@ -16,6 +16,7 @@ package com.qubole.rubix.bookkeeper;
 import com.codahale.metrics.MetricRegistry;
 import com.qubole.rubix.common.metrics.BookKeeperMetrics;
 import com.qubole.rubix.spi.BookKeeperFactory;
+import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.thrift.HeartbeatStatus;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -50,7 +51,9 @@ public class WorkerBookKeeper extends BookKeeper
    */
   private void startHeartbeatService(Configuration conf, MetricRegistry metrics, BookKeeperFactory factory)
   {
-    this.heartbeatService = new HeartbeatService(conf, metrics, factory, this);
-    heartbeatService.startAsync();
+    if (CacheConfig.isHeartbeatEnabled(conf) || !CacheConfig.isEmbeddedModeEnabled(conf)) {
+      this.heartbeatService = new HeartbeatService(conf, metrics, factory, this);
+      heartbeatService.startAsync();
+    }
   }
 }

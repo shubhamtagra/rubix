@@ -11,7 +11,7 @@
  * limitations under the License. See accompanying LICENSE file.
  */
 
-package com.qubole.rubix.presto;
+package com.qubole.rubix.prestosql;
 
 import com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem;
 import com.qubole.rubix.core.CachingFileSystem;
