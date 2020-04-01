@@ -32,22 +32,22 @@ import java.io.Closeable;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-public class RetryingPooledBookkeeperClient
+public class RetryingBookkeeperClient
         extends BookKeeperService.Client implements Closeable
 {
-  private static final Log log = LogFactory.getLog(RetryingPooledBookkeeperClient.class);
+  private static final Log log = LogFactory.getLog(RetryingBookkeeperClient.class);
   private int maxRetries;
   TTransport transport;
   Poolable<TTransport> transportPoolable;
 
-  public RetryingPooledBookkeeperClient(TTransport transport, int maxRetries)
+  public RetryingBookkeeperClient (TTransport transport, int maxRetries)
   {
     super(new TBinaryProtocol(transport));
     this.transport = transport;
     this.maxRetries = maxRetries;
   }
 
-  public RetryingPooledBookkeeperClient(Poolable<TTransport> transportPoolable, int maxRetries)
+  public RetryingBookkeeperClient (Poolable<TTransport> transportPoolable, int maxRetries)
   {
     super(new TBinaryProtocol(transportPoolable.getObject()));
     this.transport = transportPoolable.getObject();
@@ -64,7 +64,7 @@ public class RetryingPooledBookkeeperClient
       public List<BlockLocation> call()
           throws TException
       {
-        return RetryingPooledBookkeeperClient.super.getCacheStatus(request);
+        return RetryingBookkeeperClient.super.getCacheStatus(request);
       }
     });
   }
@@ -78,7 +78,7 @@ public class RetryingPooledBookkeeperClient
       public Void call()
           throws Exception
       {
-        RetryingPooledBookkeeperClient.super.setAllCached(request);
+        RetryingBookkeeperClient.super.setAllCached(request);
         return null;
       }
     });
@@ -92,7 +92,7 @@ public class RetryingPooledBookkeeperClient
       @Override
       public Void call() throws Exception
       {
-        RetryingPooledBookkeeperClient.super.handleHeartbeat(request);
+        RetryingBookkeeperClient.super.handleHeartbeat(request);
         return null;
       }
     });

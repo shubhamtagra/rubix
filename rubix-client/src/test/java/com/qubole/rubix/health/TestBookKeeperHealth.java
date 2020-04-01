@@ -13,7 +13,7 @@
 package com.qubole.rubix.health;
 
 import com.qubole.rubix.spi.BookKeeperFactory;
-import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
+import com.qubole.rubix.spi.RetryingBookkeeperClient;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -40,7 +40,7 @@ public class TestBookKeeperHealth extends Configured
   {
     final BookKeeperFactory mockBookKeeperFactory = mock(BookKeeperFactory.class);
     final BookKeeperHealth bookKeeperHealth = new BookKeeperHealth(conf, mockBookKeeperFactory);
-    final RetryingPooledBookkeeperClient client = mock(RetryingPooledBookkeeperClient.class);
+    final RetryingBookkeeperClient client = mock(RetryingBookkeeperClient.class);
 
     when(mockBookKeeperFactory.createBookKeeperClient(conf)).thenReturn(client);
     when(client.isBookKeeperAlive()).thenReturn(true);
@@ -54,7 +54,7 @@ public class TestBookKeeperHealth extends Configured
   {
     final BookKeeperFactory mockBookKeeperFactory = mock(BookKeeperFactory.class);
     final BookKeeperHealth bookKeeperHealth = new BookKeeperHealth(conf, mockBookKeeperFactory);
-    final RetryingPooledBookkeeperClient client = mock(RetryingPooledBookkeeperClient.class);
+    final RetryingBookkeeperClient client = mock(RetryingBookkeeperClient.class);
 
     when(mockBookKeeperFactory.createBookKeeperClient(conf)).thenReturn(client);
     when(client.isBookKeeperAlive()).thenThrow(TTransportException.class);
