@@ -17,7 +17,7 @@ import com.qubole.rubix.common.metrics.BookKeeperMetrics;
 import com.qubole.rubix.common.metrics.MetricsReporter;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
-import com.qubole.rubix.spi.RetryingBookkeeperClient;
+import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -607,7 +607,7 @@ public class BaseServerTest
       final BookKeeperFactory bookKeeperFactory = mock(BookKeeperFactory.class);
       try {
         when(bookKeeperFactory.createBookKeeperClient(anyString(), ArgumentMatchers.<Configuration>any())).thenReturn(
-            new RetryingBookkeeperClient(
+            new RetryingPooledBookkeeperClient(
                 new TSocket("localhost", CacheConfig.getBookKeeperServerPort(conf), CacheConfig.getServerConnectTimeout(conf)),
                 CacheConfig.getMaxRetries(conf)));
       }

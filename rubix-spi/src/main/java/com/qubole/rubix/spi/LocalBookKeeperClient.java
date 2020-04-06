@@ -12,6 +12,7 @@
  */
 package com.qubole.rubix.spi;
 
+import com.qubole.rubix.spi.fop.Poolable;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
@@ -22,21 +23,20 @@ import org.apache.thrift.transport.TTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Created by sakshia on 6/10/16.
  */
-public class LocalBookKeeperClient extends RetryingBookkeeperClient
+public class LocalBookKeeperClient extends RetryingPooledBookkeeperClient
 {
-  private static final Logger log = LoggerFactory.getLogger(RetryingBookkeeperClient.class);
+  private static final Logger log = LoggerFactory.getLogger(RetryingPooledBookkeeperClient.class);
   BookKeeperService.Iface bookKeeper;
 
-  public LocalBookKeeperClient(TTransport transport, BookKeeperService.Iface bookKeeper)
+  public LocalBookKeeperClient(Poolable<TTransport> transportPoolable, BookKeeperService.Iface bookKeeper)
   {
-    super(transport, 1);
+    super(transportPoolable, 1);
     this.bookKeeper = bookKeeper;
   }
 
@@ -93,11 +93,5 @@ public class LocalBookKeeperClient extends RetryingBookkeeperClient
           throws TException
   {
     bookKeeper.invalidateFileMetadata(remotePath);
-  }
-
-  @Override
-  public void close()
-      throws IOException
-  {
   }
 }

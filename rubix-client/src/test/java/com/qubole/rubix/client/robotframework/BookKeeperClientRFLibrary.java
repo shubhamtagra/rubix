@@ -15,7 +15,7 @@ package com.qubole.rubix.client.robotframework;
 import com.qubole.rubix.core.MockCachingFileSystem;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheUtil;
-import com.qubole.rubix.spi.RetryingBookkeeperClient;
+import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import org.apache.commons.io.FileUtils;
@@ -55,7 +55,7 @@ public class BookKeeperClientRFLibrary
    */
   public boolean cacheDataUsingBookKeeperServerCall(TestClientReadRequest readRequest) throws IOException, TException
   {
-    try (RetryingBookkeeperClient client = createBookKeeperClient()) {
+    try (RetryingPooledBookkeeperClient client = createBookKeeperClient()) {
       return client.readData(
           getPathWithFileScheme(readRequest.getRemotePath()),
           readRequest.getReadStart(),
@@ -149,7 +149,7 @@ public class BookKeeperClientRFLibrary
    */
   public List<BlockLocation> getCacheStatus(TestClientStatusRequest request) throws IOException, TException
   {
-    try (RetryingBookkeeperClient client = createBookKeeperClient()) {
+    try (RetryingPooledBookkeeperClient client = createBookKeeperClient()) {
       return client.getCacheStatus(new CacheStatusRequest(
           getPathWithFileScheme(request.getRemotePath()),
           request.getFileLength(),
@@ -167,7 +167,7 @@ public class BookKeeperClientRFLibrary
    */
   public Map<String, Double> getCacheMetrics() throws IOException, TException
   {
-    try (RetryingBookkeeperClient client = createBookKeeperClient()) {
+    try (RetryingPooledBookkeeperClient client = createBookKeeperClient()) {
       return client.getCacheMetrics();
     }
   }
@@ -297,7 +297,7 @@ public class BookKeeperClientRFLibrary
    * @return The BookKeeper client.
    * @throws TTransportException if an error occurs when trying to connect to the BookKeeper server.
    */
-  private RetryingBookkeeperClient createBookKeeperClient() throws TTransportException
+  private RetryingPooledBookkeeperClient createBookKeeperClient() throws TTransportException
   {
     return factory.createBookKeeperClient(conf);
   }

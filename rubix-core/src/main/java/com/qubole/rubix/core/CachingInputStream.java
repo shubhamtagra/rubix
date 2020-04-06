@@ -22,7 +22,7 @@ import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.ClusterType;
-import com.qubole.rubix.spi.RetryingBookkeeperClient;
+import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
@@ -78,7 +78,7 @@ public class CachingInputStream extends FSInputStream
   private String localPath;
   private long lastModified;
 
-  private RetryingBookkeeperClient bookKeeperClient;
+  private RetryingPooledBookkeeperClient bookKeeperClient;
   Configuration conf;
 
   private boolean strictMode;

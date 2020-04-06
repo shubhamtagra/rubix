@@ -499,7 +499,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
         return info;
       }
       catch (Exception e) {
-        log.error(String.format("Could not fetch FileStatus from remote file system for %s : %s", remotePath), e);
+        log.error(String.format("Could not fetch FileStatus from remote file system for %s", remotePath), e);
       }
     }
     else {

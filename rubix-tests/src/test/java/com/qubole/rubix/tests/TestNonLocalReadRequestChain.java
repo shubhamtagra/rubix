@@ -29,7 +29,7 @@ import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.ClusterType;
-import com.qubole.rubix.spi.RetryingBookkeeperClient;
+import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.Location;
@@ -331,7 +331,7 @@ public class TestNonLocalReadRequestChain
   {
     int endBlock = length / CacheConfig.getBlockSize(conf);
     BookKeeperFactory factory = new BookKeeperFactory();
-    RetryingBookkeeperClient client = factory.createBookKeeperClient("localhost", conf);
+    RetryingPooledBookkeeperClient client = factory.createBookKeeperClient("localhost", conf);
     client.readData(backendPath.toString(), 0, length, backendFile.length(),
         backendFile.lastModified(), ClusterType.TEST_CLUSTER_MANAGER.ordinal());
 
