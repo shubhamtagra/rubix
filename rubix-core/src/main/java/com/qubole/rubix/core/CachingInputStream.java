@@ -24,7 +24,6 @@ import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
-import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.Location;
@@ -78,7 +77,6 @@ public class CachingInputStream extends FSInputStream
   private String localPath;
   private long lastModified;
 
-  private RetryingPooledBookkeeperClient bookKeeperClient;
   Configuration conf;
 
   private boolean strictMode;
@@ -104,12 +102,15 @@ public class CachingInputStream extends FSInputStream
     this.remotePath = backendPath.toString();
     this.remoteFileSystem = remoteFileSystem;
 
-    try {
-      FileInfo fileInfo = this.bookKeeperClient.getFileInfo(backendPath.toString());
+    try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf)) {
+      FileInfo fileInfo = bookKeeperClient.getFileInfo(backendPath.toString());
       this.fileSize = fileInfo.fileSize;
       this.lastModified = fileInfo.lastModified;
     }
     catch (Exception ex) {
+      if (strictMode) {
+        throw Throwables.propagate(ex);
+      }
       log.error(String.format("Could not get FileInfo for %s. Fetching FileStatus from remote file system :", backendPath.toString()), ex);
       FileStatus fileStatus = parentFs.getFileStatus(backendPath);
       this.fileSize = fileStatus.getLen();
@@ -147,17 +148,6 @@ public class CachingInputStream extends FSInputStream
   {
     this.conf = conf;
     this.strictMode = CacheConfig.isStrictMode(conf);
-    try {
-      this.bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf);
-      this.localPath = CacheUtil.getLocalPath(backendPath, conf);
-    }
-    catch (Exception e) {
-      if (strictMode) {
-        throw Throwables.propagate(e);
-      }
-      log.warn("Could not create BookKeeper Client " + Throwables.getStackTraceAsString(e));
-      bookKeeperClient = null;
-    }
     this.blockSize = CacheConfig.getBlockSize(conf);
     this.diskReadBufferSize = CacheConfig.getDiskReadBufferSize(conf);
   }
@@ -259,8 +249,7 @@ public class CachingInputStream extends FSInputStream
         endBlock,
         length,
         nextReadPosition,
-        nextReadBlock,
-        bookKeeperClient);
+        nextReadBlock);
 
     log.debug("Executing Chains");
 
@@ -321,8 +310,7 @@ public class CachingInputStream extends FSInputStream
                                                 long endBlock,
                                                 int length,
                                                 long nextReadPosition,
-                                                long nextReadBlock,
-                                                BookKeeperService.Iface bookKeeperClient) throws IOException
+                                                long nextReadBlock) throws IOException
   {
     DirectReadRequestChain directReadRequestChain = null;
     RemoteReadRequestChain remoteReadRequestChain = null;
@@ -335,13 +323,11 @@ public class CachingInputStream extends FSInputStream
     int lengthAlreadyConsidered = 0;
     List<BlockLocation> isCached = null;
 
-    try {
-      if (bookKeeperClient != null) {
-        CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified,
-            nextReadBlock, endBlock, clusterType.ordinal());
-        request.setIncrMetrics(true);
-        isCached = bookKeeperClient.getCacheStatus(request);
-      }
+    try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf)) {
+      CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified,
+          nextReadBlock, endBlock, clusterType.ordinal());
+      request.setIncrMetrics(true);
+      isCached = bookKeeperClient.getCacheStatus(request);
     }
     catch (Exception e) {
       if (strictMode) {
@@ -535,9 +521,6 @@ public class CachingInputStream extends FSInputStream
     try {
       if (inputStream != null) {
         inputStream.close();
-      }
-      if (bookKeeperClient != null) {
-        bookKeeperClient.close();
       }
     }
     catch (IOException e) {
