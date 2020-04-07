@@ -22,6 +22,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -68,7 +70,7 @@ public class ObjectPool<T>
     }
     log.debug("Borrowing object for partition: " + host);
     for (int i = 0; i < 3; i++) { // try at most three times
-      Poolable<T> result = getObject(false, host);
+      Poolable<T> result = getObject(true, host);
       if (factory.validate(result.getObject())) {
         return result;
       }
@@ -96,6 +98,9 @@ public class ObjectPool<T>
     try {
       if (blocking) {
         freeObject = subPool.getObjectQueue().take();
+        StringWriter sw = new StringWriter();
+        new Throwable("").printStackTrace(new PrintWriter(sw));
+        freeObject.setOwnerTrace(sw.toString());
       }
       else {
         freeObject = subPool.getObjectQueue().poll(config.getMaxWaitMilliseconds(), TimeUnit.MILLISECONDS);
@@ -118,14 +123,13 @@ public class ObjectPool<T>
     if (!factory.validate(obj.getObject())) {
       log.debug(String.format("Invalid object for host %s removing %s ", obj.getHost(), obj));
       subPool.decreaseObject(obj);
-      // Compensate for the removed object. Needed to prevent endless wait when in parallel a borrowObject is called
-      subPool.increaseObjects(1);
       return;
     }
 
     try {
       log.debug(String.format("Returning object %s to queue of host %s. Queue size: %d", obj, obj.getHost(), subPool.getObjectQueue().size()));
       subPool.getObjectQueue().put(obj);
+      obj.setOwnerTrace("FREE");
     }
     catch (InterruptedException e) {
       throw new RuntimeException(e); // impossible for now, unless there is a bug, e,g. borrow once but return twice.

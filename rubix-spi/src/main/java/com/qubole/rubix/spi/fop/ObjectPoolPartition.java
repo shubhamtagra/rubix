@@ -20,6 +20,8 @@ import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 
 /**
@@ -32,6 +34,7 @@ public class ObjectPoolPartition<T>
   private final ObjectPool<T> pool;
   private final PoolConfig config;
   private final BlockingQueue<Poolable<T>> objectQueue;
+  private final List<Poolable<T>> allObjects;
   private final ObjectFactory<T> objectFactory;
   private int totalCount;
   private String host;
@@ -39,7 +42,7 @@ public class ObjectPoolPartition<T>
   private int connectTimeout;
 
   public ObjectPoolPartition(ObjectPool<T> pool, PoolConfig config,
-          ObjectFactory<T> objectFactory, BlockingQueue<Poolable<T>> queue, String host, int socketTimeout, int connectTimeout)
+          ObjectFactory<T> objectFactory, BlockingQueue<Poolable<T>> queue, final String host, int socketTimeout, int connectTimeout)
   {
     this.pool = pool;
     this.config = config;
@@ -49,13 +52,37 @@ public class ObjectPoolPartition<T>
     this.socketTimeout = socketTimeout;
     this.connectTimeout = connectTimeout;
     totalCount = 0;
+    allObjects = new ArrayList<>();
     for (int i = 0; i < config.getMinSize(); i++) {
       T object = objectFactory.create(host, socketTimeout, connectTimeout);
       if (object != null) {
-        objectQueue.add(new Poolable<>(object, pool, host));
+        Poolable obj = new Poolable<>(object, pool, host);
+        objectQueue.add(obj);
+        allObjects.add(obj);
         totalCount++;
       }
     }
+
+    new Thread(new Runnable()
+    {
+      @Override
+      public void run()
+      {
+        try {
+          Thread.sleep(30000);
+        }
+        catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+        StringBuilder debugInfo = new StringBuilder();
+        debugInfo.append("DebugInfo for host " + host + "\n");
+        int c = 1;
+        for (Poolable obj : allObjects) {
+          debugInfo.append("ObjectNum" + (c++) + " object: " + obj + " ownerTrace: \n" + obj.getOwnerTrace() + "\n");
+        }
+        log.info(debugInfo.toString());
+      }
+    }).start();
   }
 
   public BlockingQueue<Poolable<T>> getObjectQueue()
@@ -73,7 +100,9 @@ public class ObjectPoolPartition<T>
       for (int i = 0; i < delta; i++) {
         T object = objectFactory.create(host, socketTimeout, connectTimeout);
         if (object != null) {
-          objectQueue.put(new Poolable<>(object, pool, host));
+          Poolable obj = new Poolable<>(object, pool, host);
+          objectQueue.put(obj);
+          allObjects.add(obj);
           totalCount++;
         }
       }
@@ -89,6 +118,7 @@ public class ObjectPoolPartition<T>
   {
     objectFactory.destroy(obj.getObject());
     totalCount--;
+    allObjects.remove(obj);
     return true;
   }
 
