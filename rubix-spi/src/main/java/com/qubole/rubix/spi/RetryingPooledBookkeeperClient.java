@@ -21,39 +21,45 @@ import com.qubole.rubix.spi.fop.Poolable;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.HeartbeatStatus;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.thrift.TException;
+import org.apache.thrift.TServiceClient;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.transport.TTransport;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.Closeable;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 public class RetryingPooledBookkeeperClient
-        extends BookKeeperService.Client implements Closeable
+        extends RetryingPooledThriftClient
+        implements BookKeeperService.Iface
 {
-  private static final Logger LOG = LoggerFactory.getLogger(RetryingPooledBookkeeperClient.class);
-  private int maxRetries;
-  private TTransport transport;
-  private Poolable<TTransport> transportPoolable;
+  private static final Log log = LogFactory.getLog(RetryingPooledBookkeeperClient.class);
 
   @VisibleForTesting
-  public RetryingPooledBookkeeperClient(TTransport transport, int maxRetries)
+  public RetryingPooledBookkeeperClient()
   {
-    super(new TBinaryProtocol(transport));
-    this.transport = transport;
-    this.maxRetries = maxRetries;
+    super(1, null, null, null);
   }
 
-  public RetryingPooledBookkeeperClient(Poolable<TTransport> transportPoolable, int maxRetries)
+  public RetryingPooledBookkeeperClient(Poolable<TTransport> transportPoolable, String host, Configuration conf)
   {
-    super(new TBinaryProtocol(transportPoolable.getObject()));
-    this.transport = transportPoolable.getObject();
-    this.transportPoolable = transportPoolable;
-    this.maxRetries = maxRetries;
+    super(CacheConfig.getMaxRetries(conf), conf, host, transportPoolable);
+  }
+
+  public TServiceClient setupClient(Poolable<TTransport> transportPoolable)
+  {
+    return new BookKeeperService.Client(new TBinaryProtocol(transportPoolable.getObject()));
+  }
+
+  private BookKeeperService.Client client()
+  {
+    return (BookKeeperService.Client) client;
   }
 
   @Override
@@ -63,25 +69,55 @@ public class RetryingPooledBookkeeperClient
     {
       @Override
       public List<BlockLocation> call()
-          throws TException
+              throws TException
       {
-        return RetryingPooledBookkeeperClient.super.getCacheStatus(request);
+        return client().getCacheStatus(request);
       }
     });
   }
 
   @Override
   public void setAllCached(final String remotePath, final long fileLength, final long lastModified,
-                           final long startBlock, final long endBlock) throws TException
+          final long startBlock, final long endBlock) throws TException
   {
     retryConnection(new Callable<Void>()
     {
       @Override
       public Void call()
-          throws Exception
+              throws Exception
       {
-        RetryingPooledBookkeeperClient.super.setAllCached(remotePath, fileLength, lastModified, startBlock, endBlock);
+        client().setAllCached(remotePath, fileLength, lastModified, startBlock, endBlock);
         return null;
+      }
+    });
+  }
+
+  @Override
+  public Map<String, Double> getCacheMetrics()
+          throws TException
+  {
+    return retryConnection(new Callable<Map<String, Double>>()
+    {
+      @Override
+      public Map<String, Double> call()
+              throws TException
+      {
+        return client().getCacheMetrics();
+      }
+    });
+  }
+
+  @Override
+  public boolean readData(final String path, final long readStart, final int length, final long fileSize, final long lastModified, final int clusterType)
+          throws TException
+  {
+    return retryConnection(new Callable<Boolean>()
+    {
+      @Override
+      public Boolean call()
+              throws TException
+      {
+        return client().readData(path, readStart, length, fileSize, lastModified, clusterType);
       }
     });
   }
@@ -94,41 +130,55 @@ public class RetryingPooledBookkeeperClient
       @Override
       public Void call() throws Exception
       {
-        RetryingPooledBookkeeperClient.super.handleHeartbeat(workerHostname, heartbeatStatus);
+        client().handleHeartbeat(workerHostname, heartbeatStatus);
         return null;
       }
     });
   }
 
-  private <V> V retryConnection(Callable<V> callable)
-      throws TException
+  @Override
+  public FileInfo getFileInfo(final String remotePath)
+          throws TException
   {
-    int errors = 0;
-
-    while (errors < maxRetries) {
-      try {
-        if (!transport.isOpen()) {
-          transport.open();
-        }
-        return callable.call();
+    return retryConnection(new Callable<FileInfo>()
+    {
+      @Override
+      public FileInfo call()
+              throws TException
+      {
+        return client().getFileInfo(remotePath);
       }
-      catch (Exception e) {
-        LOG.warn("Error while connecting : ", e);
-        errors++;
-      }
-      if (transport.isOpen()) {
-        transport.close();
-      }
-    }
-
-    throw new TException();
+    });
   }
 
   @Override
-  public void close()
+  public boolean isBookKeeperAlive()
+          throws TException
   {
-    if (transportPoolable != null && transportPoolable.getObject() != null && transportPoolable.getObject().isOpen()) {
-      BookKeeperFactory.pool.returnObject(transportPoolable);
-    }
+    return retryConnection(new Callable<Boolean>()
+    {
+      @Override
+      public Boolean call()
+              throws TException
+      {
+        return client().isBookKeeperAlive();
+      }
+    });
+  }
+
+  @Override
+  public void invalidateFileMetadata(final String remotePath)
+          throws TException
+  {
+    retryConnection(new Callable<Void>()
+    {
+      @Override
+      public Void call()
+              throws TException
+      {
+        client().invalidateFileMetadata(remotePath);
+        return null;
+      }
+    });
   }
 }

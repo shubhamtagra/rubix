@@ -18,10 +18,12 @@ import com.qubole.rubix.common.metrics.MetricsReporter;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
+import com.qubole.rubix.spi.fop.Poolable;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.thrift.shaded.transport.TSocket;
+import org.apache.thrift.shaded.transport.TTransport;
 import org.apache.thrift.shaded.transport.TTransportException;
 import org.mockito.ArgumentMatchers;
 
@@ -607,9 +609,10 @@ public class BaseServerTest
       final BookKeeperFactory bookKeeperFactory = mock(BookKeeperFactory.class);
       try {
         when(bookKeeperFactory.createBookKeeperClient(anyString(), ArgumentMatchers.<Configuration>any())).thenReturn(
-            new RetryingPooledBookkeeperClient(
-                new TSocket("localhost", CacheConfig.getBookKeeperServerPort(conf), CacheConfig.getServerConnectTimeout(conf)),
-                CacheConfig.getMaxRetries(conf)));
+                new RetryingPooledBookkeeperClient(
+                        new Poolable<TTransport>(new TSocket("localhost", CacheConfig.getBookKeeperServerPort(conf), CacheConfig.getServerConnectTimeout(conf)), null, "localhost"),
+                        null,
+                        conf));
       }
       catch (TTransportException e) {
         log.error("Error starting MockWorkerBookKeeperServer for test", e);

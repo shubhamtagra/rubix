@@ -21,6 +21,7 @@ import com.qubole.rubix.common.utils.TestUtil;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
+import com.qubole.rubix.spi.fop.Poolable;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.Location;
@@ -29,6 +30,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.thrift.shaded.TException;
 import org.apache.thrift.shaded.transport.TSocket;
+import org.apache.thrift.shaded.transport.TTransport;
 import org.mockito.ArgumentMatchers;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -197,9 +199,10 @@ public class TestCachingValidator
   {
     final BookKeeperFactory bookKeeperFactory = mock(BookKeeperFactory.class);
     when(bookKeeperFactory.createBookKeeperClient(anyString(), ArgumentMatchers.<Configuration>any())).thenReturn(
-        new RetryingPooledBookkeeperClient(
-            new TSocket("localhost", CacheConfig.getBookKeeperServerPort(conf), CacheConfig.getServerConnectTimeout(conf)),
-            CacheConfig.getMaxRetries(conf)));
+            new RetryingPooledBookkeeperClient(
+                    new Poolable<TTransport>(new TSocket("localhost", CacheConfig.getBookKeeperServerPort(conf), CacheConfig.getServerConnectTimeout(conf)), null, "localhost"),
+                    null,
+                    conf));
 
     CachingValidator validator = new CachingValidator(conf, bookKeeper, Executors.newSingleThreadScheduledExecutor());
     assertEquals(validator.validateCachingBehavior(), expectedResult);

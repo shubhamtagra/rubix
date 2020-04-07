@@ -112,6 +112,10 @@ public class LocalDataTransferServer extends Configured implements Tool
 
   public static void stopServer()
   {
+    if (!isServerUp()) {
+      return;
+    }
+
     removeMetrics();
     if (localServer != null) {
       try {

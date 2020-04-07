@@ -16,6 +16,7 @@ package com.qubole.rubix.bookkeeper;
 import com.codahale.metrics.MetricRegistry;
 import com.qubole.rubix.common.metrics.BookKeeperMetrics;
 import com.qubole.rubix.common.utils.TestUtil;
+import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.thrift.HeartbeatStatus;
 import org.apache.commons.logging.Log;
@@ -62,6 +63,7 @@ public class TestWorkerBookKeeper
     conf.clear();
 
     BaseServerTest.stopBookKeeperServer();
+    BookKeeperFactory.resetConnectionPool();
   }
 
   @AfterClass
