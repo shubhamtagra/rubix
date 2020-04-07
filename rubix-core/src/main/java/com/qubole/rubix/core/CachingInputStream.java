@@ -152,9 +152,6 @@ public class CachingInputStream extends FSInputStream
         throw Throwables.propagate(e);
       }
       log.warn("Could not create BookKeeper Client " + Throwables.getStackTraceAsString(e));
-      if (bookKeeperClient != null) {
-        bookKeeperClient.close();
-      }
       bookKeeperClient = null;
     }
     this.blockSize = CacheConfig.getBlockSize(conf);
