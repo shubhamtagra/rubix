@@ -68,7 +68,7 @@ public class ObjectPool<T>
     }
     log.debug("Borrowing object for partition: " + host);
     for (int i = 0; i < 3; i++) { // try at most three times
-      Poolable<T> result = getObject(true, host);
+      Poolable<T> result = getObject(false, host);
       if (factory.validate(result.getObject())) {
         return result;
       }
