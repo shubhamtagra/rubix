@@ -68,19 +68,21 @@ public class ObjectPoolPartition<T>
       @Override
       public void run()
       {
-        try {
-          Thread.sleep(30000);
+        while (true) {
+          try {
+            Thread.sleep(30000);
+          }
+          catch (InterruptedException e) {
+            e.printStackTrace();
+          }
+          StringBuilder debugInfo = new StringBuilder();
+          debugInfo.append("DebugInfo for host " + host + "\n");
+          int c = 1;
+          for (Poolable obj : allObjects) {
+            debugInfo.append("ObjectNum" + (c++) + " object: " + obj + " ownerTrace: \n" + obj.getOwnerTrace() + "\n");
+          }
+          log.info(debugInfo.toString());
         }
-        catch (InterruptedException e) {
-          e.printStackTrace();
-        }
-        StringBuilder debugInfo = new StringBuilder();
-        debugInfo.append("DebugInfo for host " + host + "\n");
-        int c = 1;
-        for (Poolable obj : allObjects) {
-          debugInfo.append("ObjectNum" + (c++) + " object: " + obj + " ownerTrace: \n" + obj.getOwnerTrace() + "\n");
-        }
-        log.info(debugInfo.toString());
       }
     }).start();
   }
