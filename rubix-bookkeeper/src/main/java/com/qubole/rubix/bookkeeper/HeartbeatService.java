@@ -29,7 +29,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.thrift.shaded.TException;
-import org.apache.thrift.shaded.transport.TTransportException;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -115,7 +114,7 @@ public class HeartbeatService extends AbstractScheduledService
         RetryingPooledBookkeeperClient client = bookKeeperFactory.createBookKeeperClient(masterHostname, conf);
         return client;
       }
-      catch (TTransportException e) {
+      catch (Exception e) {
         failedStarts++;
         log.warn(String.format("Could not start client for heartbeat service [%d/%d attempts]", failedStarts, maxRetries));
       }
