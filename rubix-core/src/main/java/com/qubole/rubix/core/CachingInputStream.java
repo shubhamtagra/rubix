@@ -148,6 +148,7 @@ public class CachingInputStream extends FSInputStream
   {
     this.conf = conf;
     this.strictMode = CacheConfig.isStrictMode(conf);
+    this.localPath = CacheUtil.getLocalPath(backendPath, conf);
     this.blockSize = CacheConfig.getBlockSize(conf);
     this.diskReadBufferSize = CacheConfig.getDiskReadBufferSize(conf);
   }

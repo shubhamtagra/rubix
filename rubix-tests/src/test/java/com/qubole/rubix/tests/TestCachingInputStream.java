@@ -143,6 +143,7 @@ public class TestCachingInputStream
   @AfterMethod
   public void cleanup()
   {
+    BookKeeperFactory.resetConnectionPool();
     if (bookKeeperServer != null) {
       bookKeeperServer.stopServer();
     }

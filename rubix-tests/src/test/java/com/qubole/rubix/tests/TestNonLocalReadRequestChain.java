@@ -83,7 +83,6 @@ public class TestNonLocalReadRequestChain
   @AfterClass
   public static void tearDownClass() throws IOException
   {
-    BookKeeperFactory.resetConnectionPool();
     log.info("Deleting files in " + testDirectory);
     Files.walkFileTree(Paths.get(testDirectory), new DeleteFileVisitor());
     Files.deleteIfExists(Paths.get(testDirectory));
@@ -132,6 +131,7 @@ public class TestNonLocalReadRequestChain
     //set class for filepath beginning with testfile
     conf.setClass("fs.testfile.impl", MockCachingFileSystem.class, FileSystem.class);
     nonLocalReadRequestChain = createNewNonLocalReadRequest();
+    BookKeeperFactory.resetConnectionPool();
   }
 
   private NonLocalReadRequestChain createNewNonLocalReadRequest() throws IOException
