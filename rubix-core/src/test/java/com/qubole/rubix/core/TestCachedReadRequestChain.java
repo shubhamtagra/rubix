@@ -75,7 +75,7 @@ public class TestCachedReadRequestChain
     backendFile = new File(TEST_BACKEND_FILE);
 
     // Populate Cached File
-    String cachedLocalFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf);
+    String cachedLocalFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf, 0);
     DataGen.populateFile(cachedLocalFile);
 
     factory = new BookKeeperFactory();
@@ -84,7 +84,7 @@ public class TestCachedReadRequestChain
   @AfterMethod
   public void cleanup() throws IOException
   {
-    File localFile = new File(CacheUtil.getLocalPath(backendFilePath.toString(), conf));
+    File localFile = new File(CacheUtil.getLocalPath(backendFilePath.toString(), conf, 0));
     localFile.delete();
 
     backendFile.delete();
@@ -115,7 +115,7 @@ public class TestCachedReadRequestChain
   public void testCachedRead_WithNoLocalCachedFile() throws IOException
   {
     byte[] buffer = new byte[1000];
-    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf);
+    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf, 0);
 
     CachedReadRequestChain cachedReadRequestChain = getCachedReadRequestChain(buffer);
 
@@ -139,7 +139,7 @@ public class TestCachedReadRequestChain
   public void testCachedRead_WithCorruptedLocalCachedFile_1() throws IOException
   {
     byte[] buffer = new byte[1000];
-    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf);
+    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf, 0);
 
     CachedReadRequestChain cachedReadRequestChain = getCachedReadRequestChain(buffer);
 
@@ -162,7 +162,7 @@ public class TestCachedReadRequestChain
   public void testCachedRead_WithCorruptedLocalCachedFile_2() throws IOException
   {
     byte[] buffer = new byte[1000];
-    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf);
+    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf, 0);
 
     CachedReadRequestChain cachedReadRequestChain = getCachedReadRequestChain(buffer);
 
@@ -186,10 +186,10 @@ public class TestCachedReadRequestChain
     MockCachingFileSystem fs = new MockCachingFileSystem();
     fs.initialize(backendFilePath.toUri(), conf);
 
-    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf);
+    String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf, 0);
     ReadRequest[] readRequests = getReadRequests(buffer);
 
-    CachedReadRequestChain cachedReadRequestChain = new CachedReadRequestChain(fs.getRemoteFileSystem(), backendFilePath.toString(), conf, factory);
+    CachedReadRequestChain cachedReadRequestChain = new CachedReadRequestChain(fs, backendFilePath.toString(), conf, factory, 0);
     for (ReadRequest rr : readRequests) {
       cachedReadRequestChain.addReadRequest(rr);
     }

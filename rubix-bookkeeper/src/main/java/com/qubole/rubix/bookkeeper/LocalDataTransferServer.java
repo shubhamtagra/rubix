@@ -26,6 +26,7 @@ import com.qubole.rubix.spi.DataTransferHeader;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -48,6 +49,8 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
+import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 
 /**
  * Created by sakshia on 26/10/16.
@@ -248,7 +251,8 @@ public class LocalDataTransferServer extends Configured implements Tool
 
             CacheStatusRequest request = new CacheStatusRequest(remotePath, header.getFileSize(), header.getLastModified(),
                     startBlock, endBlock).setClusterType(header.getClusterType());
-            List<BlockLocation> blockLocations = bookKeeperClient.getCacheStatus(request);
+            CacheStatusResponse response = bookKeeperClient.getCacheStatus(request);
+            List<BlockLocation> blockLocations = response.getBlocks();
 
             long blockNum = startBlock;
             for (BlockLocation location : blockLocations) {
@@ -288,7 +292,7 @@ public class LocalDataTransferServer extends Configured implements Tool
     {
       FileChannel fc = null;
       int nread = 0;
-      String filename = CacheUtil.getLocalPath(remotePath, conf);
+      String filename = CacheUtil.getLocalPath(remotePath, conf, generationNumber.get(remotePath));
 
       try {
         fc = new FileInputStream(filename).getChannel();

@@ -40,6 +40,7 @@ import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.logging.Log;
@@ -67,6 +68,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -122,6 +124,9 @@ public abstract class BookKeeper implements BookKeeperService.Iface
   private Counter remoteRequestCount;
   private Counter cacheRequestCount;
   private Counter nonlocalRequestCount;
+
+  // maintain generation number for remote file
+  protected static ConcurrentHashMap<String, Integer> generationNumber = new ConcurrentHashMap<>();
 
   public BookKeeper(Configuration conf, BookKeeperMetrics bookKeeperMetrics) throws FileNotFoundException
   {
@@ -232,7 +237,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
   }
 
   @Override
-  public List<BlockLocation> getCacheStatus(CacheStatusRequest request) throws TException
+  public CacheStatusResponse getCacheStatus(CacheStatusRequest request) throws TException
   {
     try {
       initializeClusterManager(request);
@@ -326,8 +331,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       cacheRequestCount.inc(cacheRequests);
       remoteRequestCount.inc(remoteRequests);
     }
-
-    return blockLocations;
+    return new CacheStatusResponse(blockLocations, generationNumber.get(remotePath));
   }
 
   public boolean isInitialized()
@@ -525,7 +529,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
   {
     int blockSize = CacheConfig.getBlockSize(conf);
     byte[] buffer = new byte[blockSize];
-    String localPath = CacheUtil.getLocalPath(remotePath, conf);
     FileSystem fs = null;
     FSDataInputStream inputStream = null;
     Path path = new Path(remotePath);
@@ -534,7 +537,9 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     try {
       int idx = 0;
       CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified, startBlock, endBlock).setClusterType(clusterType);
-      List<BlockLocation> blockLocations = getCacheStatus(request);
+      CacheStatusResponse response = getCacheStatus(request);
+      List<BlockLocation> blockLocations = response.getBlocks();
+      String localPath = CacheUtil.getLocalPath(remotePath, conf, generationNumber.get(remotePath));
 
       for (long blockNum = startBlock; blockNum < endBlock; blockNum++, idx++) {
         long readStart = blockNum * blockSize;
@@ -650,6 +655,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
         .expireAfterWrite(CacheConfig.getCacheDataExpirationAfterWrite(conf), TimeUnit.MILLISECONDS)
         .removalListener(new CacheRemovalListener())
         .build();
+    generationNumber = new ConcurrentHashMap<>();
   }
 
   @VisibleForTesting
@@ -739,7 +745,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     public FileMetadata call()
         throws Exception
     {
-      return new FileMetadata(path, fileLength, lastModified, currentFileSize, conf);
+      return new FileMetadata(path, fileLength, lastModified, currentFileSize, conf, false);
     }
   }
 
@@ -763,7 +769,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       FileMetadata metadata = fileMetadataCache.getIfPresent(key);
       if (metadata != null) {
         FileMetadata newMetaData = new FileMetadata(key, metadata.getFileSize(), metadata.getLastModified(),
-            currentFileSize, conf);
+            currentFileSize, conf, true);
         fileMetadataCache.put(key, newMetaData);
       }
     }

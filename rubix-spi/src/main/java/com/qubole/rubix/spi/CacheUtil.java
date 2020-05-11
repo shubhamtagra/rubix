@@ -152,12 +152,13 @@ public class CacheUtil
    *
    * @param remotePath  The path for a remote location.
    * @param conf        The current Hadoop configuration.
+   * @param generationNumber the generation number for local file corresponding to remote location
    * @return The local path location.
    */
-  public static String getLocalPath(String remotePath, Configuration conf)
+  public static String getLocalPath(String remotePath, Configuration conf, int generationNumber)
   {
     final String absLocation = getDirectory(remotePath, conf);
-    return absLocation + "/" + getName(remotePath);
+    return absLocation + "/" + getName(remotePath) + "g" + generationNumber;
   }
 
   public static String getRemotePath(String localPath, Configuration conf)
@@ -173,12 +174,13 @@ public class CacheUtil
    *
    * @param remotePath  The path for a remote location.
    * @param conf        The current Hadoop configuration.
+   * @param generationNumber the generation number for local file corresponding to remote location
    * @return The metadata file path.
    */
-  public static String getMetadataFilePath(String remotePath, Configuration conf)
+  public static String getMetadataFilePath(String remotePath, Configuration conf, int generationNumber)
   {
     final String absLocation = getDirectory(remotePath, conf);
-    return absLocation + "/" + getName(remotePath) + CacheConfig.getCacheMetadataFileSuffix(conf);
+    return absLocation + "/" + getName(remotePath) + CacheConfig.getCacheMetadataFileSuffix(conf) + "g" + generationNumber;
   }
 
   /**

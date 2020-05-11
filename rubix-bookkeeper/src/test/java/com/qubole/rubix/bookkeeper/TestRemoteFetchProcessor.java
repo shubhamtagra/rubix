@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.util.concurrent.ConcurrentMap;
 
 import static com.qubole.rubix.spi.ClusterType.TEST_CLUSTER_MANAGER;
+import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -216,7 +217,7 @@ public class TestRemoteFetchProcessor
     assertEquals(metrics.getGauges().get(BookKeeperMetrics.CacheMetric.ASYNC_QUEUE_SIZE_GAUGE.getMetricName())
         .getValue(), 0, "All the requests should have been processed and the queue size should be zero");
 
-    final String downloadedFile = CacheUtil.getLocalPath(backendPath.toString(), conf);
+    final String downloadedFile = CacheUtil.getLocalPath(backendPath.toString(), conf, generationNumber.get(backendPath.toString()));
     final String resultString = new String(DataGen.readBytesFromFile(downloadedFile, 0, 450));
 
     final String expected = DataGen.generateContent().substring(0, 450);
@@ -253,7 +254,7 @@ public class TestRemoteFetchProcessor
     assertTrue(metrics.getCounters().get(BookKeeperMetrics.CacheMetric.PROCESSED_ASYNC_REQUEST_COUNT.getMetricName())
         .getCount() == (maxOffset / offsetStep), "Not all the requests are processed");
 
-    final String downloadedFile = CacheUtil.getLocalPath(backendPath.toString(), conf);
+    final String downloadedFile = CacheUtil.getLocalPath(backendPath.toString(), conf, generationNumber.get(backendPath.toString()));
 
     String resultString = null;
     String expected = null;

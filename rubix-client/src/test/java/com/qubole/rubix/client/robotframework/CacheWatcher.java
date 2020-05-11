@@ -124,7 +124,7 @@ public class CacheWatcher
     Map<Path, Boolean> fileCacheStatus = new HashMap<>();
 
     for (TestClientReadRequest request : requests) {
-      Path cacheFile = Paths.get(CacheUtil.getLocalPath(request.getRemotePath(), conf));
+      Path cacheFile = Paths.get(CacheUtil.getLocalPath(request.getRemotePath(), conf, 0));
       int expectedSize = request.getReadLength();
 
       if (Files.exists(cacheFile)) {

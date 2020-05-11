@@ -21,6 +21,7 @@ import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -117,7 +118,11 @@ public class CachingValidator extends AbstractScheduledService
         fileLastModified, VALIDATOR_START_BLOCK, VALIDATOR_END_BLOCK).setClusterType(VALIDATOR_CLUSTER_TYPE);
 
     try {
-      List<BlockLocation> locations = bookKeeper.getCacheStatus(request);
+      CacheStatusResponse response = bookKeeper.getCacheStatus(request);
+      if (response == null) {
+        return false;
+      }
+      List<BlockLocation> locations = response.getBlocks();
       if (locations.isEmpty() || locations.get(0).getLocation() != Location.LOCAL) {
         return false;
       }
@@ -133,7 +138,7 @@ public class CachingValidator extends AbstractScheduledService
         return false;
       }
 
-      locations = bookKeeper.getCacheStatus(request);
+      locations = bookKeeper.getCacheStatus(request).getBlocks();
       if (locations.isEmpty() || locations.get(0).getLocation() != Location.CACHED) {
         return false;
       }

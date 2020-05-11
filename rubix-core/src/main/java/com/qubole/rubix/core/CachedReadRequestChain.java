@@ -49,11 +49,13 @@ public class CachedReadRequestChain extends ReadRequestChain
   private DirectBufferPool bufferPool;
   private int directBufferSize;
   private int corruptedFileCount;
+  private int generationNumber;
 
   private static final Log log = LogFactory.getLog(CachedReadRequestChain.class);
 
   public CachedReadRequestChain(FileSystem remoteFileSystem, String remotePath, DirectBufferPool bufferPool, int directBufferSize,
-                                FileSystem.Statistics statistics, Configuration conf, BookKeeperFactory factory)
+                                FileSystem.Statistics statistics, Configuration conf, BookKeeperFactory factory,
+                                int generationNumber)
   {
     this.conf = conf;
     this.remotePath = remotePath;
@@ -62,12 +64,13 @@ public class CachedReadRequestChain extends ReadRequestChain
     this.directBufferSize = directBufferSize;
     this.statistics = statistics;
     this.factory = factory;
+    this.generationNumber = generationNumber;
   }
 
   @VisibleForTesting
-  public CachedReadRequestChain(FileSystem remoteFileSystem, String remotePath, Configuration conf, BookKeeperFactory factory)
+  public CachedReadRequestChain(FileSystem remoteFileSystem, String remotePath, Configuration conf, BookKeeperFactory factory, int generationNumber)
   {
-    this(remoteFileSystem, remotePath, new DirectBufferPool(), 100, null, conf, factory);
+    this(remoteFileSystem, remotePath, new DirectBufferPool(), 100, null, conf, factory, generationNumber);
   }
 
   @VisibleForTesting
@@ -93,7 +96,7 @@ public class CachedReadRequestChain extends ReadRequestChain
     FileInputStream fis = null;
     FileChannel fileChannel = null;
     boolean needsInvalidation = false;
-    String localCachedFile = CacheUtil.getLocalPath(remotePath, conf);
+    String localCachedFile = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
 
     ByteBuffer directBuffer = bufferPool.getBuffer(directBufferSize);
     try {

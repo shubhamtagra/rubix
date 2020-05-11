@@ -339,7 +339,7 @@ public class TestNonLocalReadRequestChain
 
     CacheStatusRequest request = new CacheStatusRequest(backendPath.toString(), backendFile.length(), backendFile.lastModified(),
         0, endBlock).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-    List<BlockLocation> blockLocations = client.getCacheStatus(request);
+    List<BlockLocation> blockLocations = client.getCacheStatus(request).getBlocks();
 
     for (BlockLocation location : blockLocations) {
       if (location.getLocation() != Location.CACHED) {
@@ -354,10 +354,10 @@ public class TestNonLocalReadRequestChain
   {
     stopAllServers();
 
-    File mdFile = new File(CacheUtil.getMetadataFilePath(backendPath.toString(), conf));
+    File mdFile = new File(CacheUtil.getMetadataFilePath(backendPath.toString(), conf, 0));
     mdFile.delete();
 
-    File localFile = new File(CacheUtil.getLocalPath(backendPath.toString(), conf));
+    File localFile = new File(CacheUtil.getLocalPath(backendPath.toString(), conf, 0));
     localFile.delete();
     backendFile.delete();
 

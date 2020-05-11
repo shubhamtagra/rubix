@@ -25,6 +25,7 @@ import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -49,6 +50,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import static com.qubole.rubix.spi.CommonUtilities.toBlockStartPosition;
 import static com.qubole.rubix.spi.CommonUtilities.toEndBlock;
 import static com.qubole.rubix.spi.CommonUtilities.toStartBlock;
+
+import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 
 /**
  * Created by Abhishek on 3/9/18.
@@ -103,13 +106,10 @@ class FileDownloader
       FileSystem fs = FileSystem.get(path.toUri(), conf);
       fs.initialize(path.toUri(), conf);
 
-      String localPath = CacheUtil.getLocalPath(entry.getKey(), conf);
-      log.debug("Processing Request for File : " + path.toString() + " LocalFile : " + localPath);
+      String localPath;
       ByteBuffer directWriteBuffer = bufferPool.getBuffer(diskReadBufferSize);
-
-      FileDownloadRequestChain requestChain = new FileDownloadRequestChain(bookKeeper, fs, localPath,
-          directWriteBuffer, conf, context.getRemoteFilePath(), context.getFileSize(),
-          context.getLastModifiedTime());
+      FileDownloadRequestChain requestChain = null;
+      String remotePath = entry.getKey();
 
       Range<Long> previousRange = null;
       for (Range<Long> range : context.getRanges().asRanges()) {
@@ -130,13 +130,24 @@ class FileDownloader
         List<BlockLocation> blockLocations = null;
 
         try {
-          blockLocations = bookKeeper.getCacheStatus(
+          CacheStatusResponse response = bookKeeper.getCacheStatus(
                   new CacheStatusRequest(
                           context.getRemoteFilePath(),
                           context.getFileSize(),
                           context.getLastModifiedTime(),
                           startBlock,
                           endBlock));
+          blockLocations = response.getBlocks();
+          int genNumber = response.getGenerationNumber();
+          localPath = CacheUtil.getLocalPath(remotePath, conf, genNumber);
+          log.debug("Processing Request for File : " + path.toString() + " LocalFile : " + localPath);
+
+          if (requestChain == null)
+          {
+            requestChain = new FileDownloadRequestChain(bookKeeper, fs, localPath,
+                    directWriteBuffer, conf, context.getRemoteFilePath(), context.getFileSize(),
+                    context.getLastModifiedTime());
+          }
         }
         catch (Exception e) {
           log.warn("Error communicating with bookKeeper", e);

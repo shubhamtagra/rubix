@@ -18,16 +18,23 @@ import com.qubole.rubix.bookkeeper.utils.DiskUtils;
 import com.qubole.rubix.common.metrics.BookKeeperMetrics;
 import com.qubole.rubix.common.utils.DataGen;
 import com.qubole.rubix.common.utils.TestUtil;
+import com.qubole.rubix.core.CachedReadRequestChain;
+import com.qubole.rubix.core.CachedReadRequestChain;
 import com.qubole.rubix.core.ClusterManagerInitilizationException;
+import com.qubole.rubix.core.MockCachingFileSystem;
+import com.qubole.rubix.core.ReadRequest;
 import com.qubole.rubix.core.utils.DummyClusterManager;
 import com.qubole.rubix.hadoop2.Hadoop2ClusterManager;
 import com.qubole.rubix.presto.PrestoClusterManager;
+import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.ClusterManager;
 import com.qubole.rubix.spi.ClusterType;
+import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.FileInfo;
+import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -42,10 +49,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
+import static org.testng.FileAssert.fail;
 
 /**
  * Created by Abhishek on 6/15/18.
@@ -145,8 +155,7 @@ public class TestBookKeeper
       verifyDownloadedData(backendFileName, offset, downloadSize);
       expectedSparseFileSize = (int) DiskUtils.bytesToMB(2 * downloadSize);
     }
-
-    long sparseFileSize = DiskUtils.getDirectorySizeInMB(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf)));
+    long sparseFileSize = DiskUtils.getDirectorySizeInMB(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf, generationNumber.get(remotePathWithScheme))));
     assertTrue(sparseFileSize == expectedSparseFileSize, "getDirectorySizeInMB is reporting wrong file Size : " + sparseFileSize);
   }
 
@@ -156,7 +165,7 @@ public class TestBookKeeper
 
     int bufferSize = (int) (offset + downloadSize);
     byte[] buffer = new byte[bufferSize];
-    FileInputStream localFileInputStream = new FileInputStream(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf)));
+    FileInputStream localFileInputStream = new FileInputStream(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf, generationNumber.get(remotePathWithScheme))));
     localFileInputStream.read(buffer, 0, bufferSize);
 
     byte[] backendBuffer = new byte[bufferSize];
@@ -403,7 +412,7 @@ public class TestBookKeeper
     DataGen.populateFile(TEST_REMOTE_PATH);
     bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
 
-    final long mdSize = FileUtils.sizeOf(new File(CacheUtil.getMetadataFilePath(TEST_REMOTE_PATH, conf)));
+    final long mdSize = FileUtils.sizeOf(new File(CacheUtil.getMetadataFilePath(TEST_REMOTE_PATH, conf, generationNumber.get(remotePathWithScheme))));
     final int totalCacheSize = (int) DiskUtils.bytesToMB(readLength + mdSize);
     assertEquals(metrics.getGauges().get(BookKeeperMetrics.CacheMetric.CACHE_SIZE_GAUGE.getMetricName()).getValue(), totalCacheSize);
   }
@@ -492,5 +501,103 @@ public class TestBookKeeper
     long newSize = bookKeeper.getFileMetadata(TEST_REMOTE_PATH).getCurrentFileSize();
     assertTrue(newSize == size + 10 * CacheConfig.getBlockSize(conf),
             String.format("Expected size: %s but found %s", (size + 10) * CacheConfig.getBlockSize(conf), newSize));
+  }
+
+  @Test
+  void testgenerationNumber() throws TException, IOException {
+    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
+    final int readOffset = 0;
+    final int readLength = 2000;
+    DataGen.populateFile(TEST_REMOTE_PATH);
+    CacheStatusRequest request = new CacheStatusRequest(remotePathWithScheme, TEST_FILE_LENGTH, TEST_LAST_MODIFIED,
+            0, 20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+    bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+    bookKeeper.invalidateFileMetadata(remotePathWithScheme);
+    assertEquals(1, bookKeeper.getCacheStatus(request).getGenerationNumber());
+  }
+
+  @Test
+  void testCachedReadWithInvalidation() throws IOException, TException, InterruptedException {
+    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
+    final int readOffset = 0;
+    final int readLength = 2000;
+    DataGen.populateFile(TEST_REMOTE_PATH);
+    CacheStatusRequest request = new CacheStatusRequest(remotePathWithScheme, TEST_FILE_LENGTH, TEST_LAST_MODIFIED,
+            0, 20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+    bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+    List<BlockLocation> blockLocations = bookKeeper.getCacheStatus(request).getBlocks();
+    for (BlockLocation location : blockLocations) {
+      if (location.getLocation() != Location.CACHED) {
+        fail();
+      }
+    }
+    Thread invalidateRequest = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        bookKeeper.invalidateFileMetadata(remotePathWithScheme);
+      }
+    });
+    Thread readrequest = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          List<BlockLocation> blockLocations = bookKeeper.getCacheStatus(request).getBlocks();
+          for (BlockLocation location : blockLocations) {
+            // once invalidated, should never be cached
+            if (location.getLocation() == Location.CACHED) {
+              byte[] buffer = new byte[1000];
+              CachedReadRequestChain cachedReadRequestChain = getCachedReadRequestChain(buffer);
+              cachedReadRequestChain.lock();
+              int readSize = Math.toIntExact(cachedReadRequestChain.call());
+              // it will read correct data if it does not find the file (from remote) or has opened the fd
+              // next read request will generate local file with new generation number for the corresponding remote path
+              assertEquals(1000, readSize);
+            }
+          }
+        }
+        catch (Exception e)
+        {
+          log.info("failed with exception ", e);
+          fail();
+        }
+      }
+    });
+    invalidateRequest.start();
+    readrequest.start();
+    invalidateRequest.join();
+    readrequest.join();
+  }
+
+  private CachedReadRequestChain getCachedReadRequestChain(byte[] buffer) throws IOException
+  {
+    MockCachingFileSystem fs = new MockCachingFileSystem();
+    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
+    Path backendFilePath = new Path(remotePathWithScheme);
+    fs.initialize(backendFilePath.toUri(), conf);
+    ReadRequest[] readRequests = getReadRequests(buffer);
+    BookKeeperFactory factory;
+    factory = new BookKeeperFactory();
+    CachedReadRequestChain cachedReadRequestChain = new CachedReadRequestChain(fs, remotePathWithScheme, conf, factory, 0);
+    for (ReadRequest rr : readRequests) {
+      cachedReadRequestChain.addReadRequest(rr);
+    }
+    return cachedReadRequestChain;
+  }
+
+  private ReadRequest[] getReadRequests(byte[] buffer)
+  {
+    int fileSize = 2000;
+    return new ReadRequest[]{
+            new ReadRequest(0, 100, 0, 100, buffer, 0, fileSize),
+            new ReadRequest(200, 300, 200, 300, buffer, 100, fileSize),
+            new ReadRequest(400, 500, 400, 500, buffer, 200, fileSize),
+            new ReadRequest(600, 700, 600, 700, buffer, 300, fileSize),
+            new ReadRequest(800, 900, 800, 900, buffer, 400, fileSize),
+            new ReadRequest(1000, 1100, 1000, 1100, buffer, 500, fileSize),
+            new ReadRequest(1200, 1300, 1200, 1300, buffer, 600, fileSize),
+            new ReadRequest(1400, 1500, 1400, 1500, buffer, 700, fileSize),
+            new ReadRequest(1600, 1700, 1600, 1700, buffer, 800, fileSize),
+            new ReadRequest(1800, 1900, 1800, 1900, buffer, 900, fileSize),
+    };
   }
 }

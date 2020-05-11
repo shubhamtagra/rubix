@@ -12,14 +12,13 @@
  */
 package com.qubole.rubix.spi;
 
-import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.HeartbeatStatus;
 import org.apache.thrift.TException;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,7 +35,7 @@ public class LocalBookKeeperClient extends RetryingPooledBookkeeperClient
   }
 
   @Override
-  public List<BlockLocation> getCacheStatus(CacheStatusRequest request) throws TException
+  public CacheStatusResponse getCacheStatus(CacheStatusRequest request) throws TException
   {
     return bookKeeper.getCacheStatus(request);
   }

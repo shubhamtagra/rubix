@@ -152,10 +152,10 @@ public class TestCachingInputStream
     File file = new File(backendFileName);
     file.delete();
 
-    File mdFile = new File(CacheUtil.getMetadataFilePath(backendPath.toString(), conf));
+    File mdFile = new File(CacheUtil.getMetadataFilePath(backendPath.toString(), conf, 0));
     mdFile.delete();
 
-    File localFile = new File(CacheUtil.getLocalPath(backendPath.toString(), conf));
+    File localFile = new File(CacheUtil.getLocalPath(backendPath.toString(), conf, 0));
     localFile.delete();
 
     conf.clear();

@@ -25,9 +25,12 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.OptionalInt;
 import java.util.concurrent.locks.Lock;
 
+import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 import static com.qubole.rubix.spi.CacheConfig.getBlockSize;
 
 /**
@@ -41,7 +44,7 @@ public class FileMetadata
   private long size;
   private long lastModified;
   private long currentFileSize;
-
+  private int genNumber;
   private boolean needsRefresh = true;
 
   int bitmapFileSizeBytes;
@@ -55,15 +58,29 @@ public class FileMetadata
   {
   }
 
-  public FileMetadata(String remotePath, long fileLength, long lastModified, long currentFileSize, Configuration conf)
+  public FileMetadata(String remotePath, long fileLength, long lastModified, long currentFileSize, Configuration conf, boolean updateMetadata)
       throws IOException
   {
     this.remotePath = remotePath;
     this.size = fileLength;
     this.lastModified = lastModified;
     this.currentFileSize = currentFileSize;
-    localPath = CacheUtil.getLocalPath(remotePath, conf);
-    mdFilePath = CacheUtil.getMetadataFilePath(remotePath, conf);
+    if (!updateMetadata) {
+      if (generationNumber.containsKey(remotePath)) {
+        genNumber = generationNumber.get(remotePath);
+        genNumber++;
+        while (Files.exists(Paths.get(CacheUtil.getMetadataFilePath(remotePath, conf, genNumber)))) {
+          genNumber++;
+        }
+        generationNumber.put(remotePath, genNumber);
+      }
+      else {
+        generationNumber.put(remotePath, 0);
+      }
+    }
+    genNumber = generationNumber.get(remotePath);
+    localPath = CacheUtil.getLocalPath(remotePath, conf, genNumber);
+    mdFilePath = CacheUtil.getMetadataFilePath(remotePath, conf, genNumber);
 
     int bitsRequired = (int) Math.ceil((double) size / getBlockSize(conf)); //numBlocks
     bitmapFileSizeBytes = (int) Math.ceil((double) bitsRequired / 8);

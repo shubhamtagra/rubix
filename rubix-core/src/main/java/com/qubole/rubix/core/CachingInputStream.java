@@ -24,6 +24,7 @@ import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.logging.Log;
@@ -236,7 +237,7 @@ public class CachingInputStream extends FSInputStream
       throws IOException, InterruptedException, ExecutionException
 
   {
-    log.debug(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d of file : %s", nextReadPosition, nextReadBlock, offset, length, localPath));
+    log.debug(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d of file : %s", nextReadPosition, nextReadBlock, offset, length, remotePath));
 
     if (nextReadPosition >= fileSize) {
       log.debug("Already at eof, returning");
@@ -325,12 +326,15 @@ public class CachingInputStream extends FSInputStream
 
     int lengthAlreadyConsidered = 0;
     List<BlockLocation> isCached = null;
+    int generationNumber = 0;
 
     try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf)) {
       CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified,
           nextReadBlock, endBlock).setClusterType(clusterType.ordinal());
       request.setIncrMetrics(true);
-      isCached = bookKeeperClient.getCacheStatus(request);
+      CacheStatusResponse response = bookKeeperClient.getCacheStatus(request);
+      isCached = response.getBlocks();
+      generationNumber = response.getGenerationNumber();
     }
     catch (Exception e) {
       if (strictMode) {
@@ -381,7 +385,7 @@ public class CachingInputStream extends FSInputStream
         log.debug(String.format("Sending cached block %d to cachedReadRequestChain", blockNum));
         if (cachedReadRequestChain == null) {
           cachedReadRequestChain = new CachedReadRequestChain(remoteFileSystem, remotePath, bufferPool, diskReadBufferSize,
-                  statistics, conf, bookKeeperFactory);
+                  statistics, conf, bookKeeperFactory, generationNumber);
         }
         cachedReadRequestChain.addReadRequest(readRequest);
       }
@@ -437,6 +441,7 @@ public class CachingInputStream extends FSInputStream
             if (affixBuffer == null) {
               affixBuffer = new byte[blockSize];
             }
+            localPath = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
             if (remoteReadRequestChain == null) {
               remoteReadRequestChain = new RemoteReadRequestChain(getParentDataInputStream(), localPath, bufferPool, diskReadBufferSize, affixBuffer, bookKeeperFactory);
             }

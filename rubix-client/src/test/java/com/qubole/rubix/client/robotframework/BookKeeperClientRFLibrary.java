@@ -151,11 +151,12 @@ public class BookKeeperClientRFLibrary
   {
     try (RetryingPooledBookkeeperClient client = createBookKeeperClient()) {
       return client.getCacheStatus(new CacheStatusRequest(
-          getPathWithFileScheme(request.getRemotePath()),
-          request.getFileLength(),
-          request.getLastModified(),
-          request.getStartBlock(),
-          request.getEndBlock()).setClusterType(request.getClusterType()));
+              getPathWithFileScheme(request.getRemotePath()),
+              request.getFileLength(),
+              request.getLastModified(),
+              request.getStartBlock(),
+              request.getEndBlock()).setClusterType(request.getClusterType()))
+              .getBlocks();
     }
   }
 
@@ -211,7 +212,7 @@ public class BookKeeperClientRFLibrary
    */
   public String generateTestMDFile(String filename) throws IOException
   {
-    String mdPath = CacheUtil.getMetadataFilePath(filename, conf);
+    String mdPath = CacheUtil.getMetadataFilePath(filename, conf, 0);
     // Certain tests require a non-empty metadata file.
     Files.write(Paths.get(mdPath), "0101010101".getBytes());
     return mdPath;

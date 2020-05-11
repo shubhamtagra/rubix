@@ -76,7 +76,7 @@ public class NonLocalRequestChain extends ReadRequestChain
 
       CacheStatusRequest request = new CacheStatusRequest(remoteFilePath, fileSize, lastModified, startBlock,
           endBlock).setClusterType(clusterType);
-      isCached = bookKeeperClient.getCacheStatus(request);
+      isCached = bookKeeperClient.getCacheStatus(request).getBlocks();
       log.debug("Cache Status : " + isCached);
     }
     catch (Exception e) {

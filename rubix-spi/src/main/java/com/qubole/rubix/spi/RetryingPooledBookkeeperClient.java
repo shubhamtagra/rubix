@@ -18,9 +18,9 @@ package com.qubole.rubix.spi;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.qubole.rubix.spi.fop.Poolable;
-import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.HeartbeatStatus;
 import org.apache.commons.logging.Log;
@@ -31,7 +31,6 @@ import org.apache.thrift.TServiceClient;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.transport.TTransport;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -63,13 +62,13 @@ public class RetryingPooledBookkeeperClient
   }
 
   @Override
-  public List<BlockLocation> getCacheStatus(final CacheStatusRequest request) throws TException
+  public CacheStatusResponse getCacheStatus(final CacheStatusRequest request) throws TException
   {
-    return retryConnection(new Callable<List<BlockLocation>>()
+    return retryConnection(new Callable<CacheStatusResponse>()
     {
       @Override
-      public List<BlockLocation> call()
-              throws TException
+      public CacheStatusResponse call()
+          throws TException
       {
         return client().getCacheStatus(request);
       }

@@ -24,6 +24,7 @@ import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.fop.Poolable;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -38,7 +39,6 @@ import org.testng.annotations.Test;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.Executors;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -57,8 +57,8 @@ public class TestCachingValidator
   private static final int TEST_MAX_DISKS = 1;
   private static final int TEST_VALIDATION_INTERVAL = 1000; // ms
   private static final String TEST_REMOTE_LOCATION = "testLocation";
-  private static final List<BlockLocation> TEST_LOCATIONS_CACHED = Lists.newArrayList(new BlockLocation(Location.CACHED, TEST_REMOTE_LOCATION));
-  private static final List<BlockLocation> TEST_LOCATIONS_LOCAL = Lists.newArrayList(new BlockLocation(Location.LOCAL, TEST_REMOTE_LOCATION));
+  private static final CacheStatusResponse TEST_LOCATIONS_CACHED = new CacheStatusResponse(Lists.newArrayList(new BlockLocation(Location.CACHED, TEST_REMOTE_LOCATION)), 0);
+  private static final CacheStatusResponse TEST_LOCATIONS_LOCAL = new CacheStatusResponse(Lists.newArrayList(new BlockLocation(Location.LOCAL, TEST_REMOTE_LOCATION)), 0);
 
   private final Configuration conf = new Configuration();
 

@@ -153,8 +153,8 @@ public class TestCacheUtil
 
     createCacheDirectoriesForTest(conf);
 
-    String localPath = CacheUtil.getLocalPath(remotePath, conf);
-    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath, "Paths not equal!");
+    String localPath = CacheUtil.getLocalPath(remotePath, conf, 0);
+    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "g0", "Paths not equal!");
   }
 
   @Test
@@ -167,8 +167,8 @@ public class TestCacheUtil
 
     createCacheDirectoriesForTest(conf);
 
-    String localPath = CacheUtil.getLocalPath(localRelPath, conf);
-    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath, "Paths not equal!");
+    String localPath = CacheUtil.getLocalPath(localRelPath, conf, 0);
+    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "g0", "Paths not equal!");
   }
 
   @Test
@@ -181,8 +181,8 @@ public class TestCacheUtil
 
     createCacheDirectoriesForTest(conf);
 
-    String localPath = CacheUtil.getLocalPath(localRelPath, conf);
-    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache//" + localRelPath, "Paths not equal!");
+    String localPath = CacheUtil.getLocalPath(localRelPath, conf, 0);
+    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache//" + localRelPath + "g0", "Paths not equal!");
   }
 
   @Test
@@ -196,13 +196,13 @@ public class TestCacheUtil
 
     createCacheDirectoriesForTest(conf);
 
-    String localPath = CacheUtil.getMetadataFilePath(remotePath, conf);
-    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfile", "Paths not equal!");
+    String localPath = CacheUtil.getMetadataFilePath(remotePath, conf, 0);
+    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfileg0", "Paths not equal!");
 
     localRelPath = "tesbucket/123";
     remotePath = "s3://" + localRelPath;
-    localPath = CacheUtil.getMetadataFilePath(remotePath, conf);
-    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfile", "Paths not equal!");
+    localPath = CacheUtil.getMetadataFilePath(remotePath, conf, 0);
+    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfileg0", "Paths not equal!");
   }
 
   @Test
@@ -216,8 +216,8 @@ public class TestCacheUtil
 
     createCacheDirectoriesForTest(conf);
 
-    String localPath = CacheUtil.getMetadataFilePath(remotePath, conf);
-    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfile", "Paths not equal!");
+    String localPath = CacheUtil.getMetadataFilePath(remotePath, conf, 0);
+    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfileg0", "Paths not equal!");
   }
 
   @Test
@@ -231,8 +231,8 @@ public class TestCacheUtil
 
     createCacheDirectoriesForTest(conf);
 
-    String localPath = CacheUtil.getMetadataFilePath(remotePath, conf);
-    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfile", "Paths not equal!");
+    String localPath = CacheUtil.getMetadataFilePath(remotePath, conf, 0);
+    assertEquals(localPath, cacheTestDirPrefix + "0" + "/fcache/" + localRelPath + "_mdfileg0", "Paths not equal!");
   }
 
   @Test
