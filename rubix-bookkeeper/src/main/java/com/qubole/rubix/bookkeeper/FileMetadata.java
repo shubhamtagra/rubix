@@ -14,7 +14,10 @@ package com.qubole.rubix.bookkeeper;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalCause;
+import com.google.common.hash.BloomFilter;
+import com.google.common.hash.Funnels;
 import com.google.common.util.concurrent.Striped;
 import com.qubole.rubix.spi.CacheUtil;
 import org.apache.commons.logging.Log;
@@ -25,12 +28,13 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.charset.Charset;
 import java.util.OptionalInt;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
-import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 import static com.qubole.rubix.spi.CacheConfig.getBlockSize;
 
 /**
@@ -44,13 +48,20 @@ public class FileMetadata
   private long size;
   private long lastModified;
   private long currentFileSize;
-  private int genNumber;
   private boolean needsRefresh = true;
+  private int generation;
 
   int bitmapFileSizeBytes;
   ByteBufferBitmap blockBitmap;
 
   static Striped<Lock> stripes = Striped.lock(20000);
+  //  Maintains generation number for remote file
+  //  If multiple threads call get of guava cache , then all are blocked and computation is done for one
+  //  and values is returned to other blocked threads.
+  static Cache<String, Integer> generationNumber = CacheBuilder.newBuilder()
+          .expireAfterWrite(2, TimeUnit.HOURS)
+          .build();
+  static BloomFilter filter = BloomFilter.create(Funnels.stringFunnel(Charset.defaultCharset()), 1000000, 0.01);;
 
   private static Log log = LogFactory.getLog(FileMetadata.class.getName());
 
@@ -58,30 +69,47 @@ public class FileMetadata
   {
   }
 
-  public FileMetadata(String remotePath, long fileLength, long lastModified, long currentFileSize, Configuration conf, boolean updateMetadata)
-      throws IOException
+  public FileMetadata(String remotePath, long fileLength, long lastModified, long currentFileSize, Configuration conf, boolean newFileEntry)
+          throws IOException, ExecutionException
   {
     this.remotePath = remotePath;
     this.size = fileLength;
     this.lastModified = lastModified;
     this.currentFileSize = currentFileSize;
-    if (!updateMetadata) {
-      if (generationNumber.containsKey(remotePath)) {
-        genNumber = generationNumber.get(remotePath);
-        genNumber++;
-        while (Files.exists(Paths.get(CacheUtil.getMetadataFilePath(remotePath, conf, genNumber)))) {
-          genNumber++;
+    Lock lock = stripes.get(remotePath);
+    try {
+      lock.lock();
+      if (newFileEntry) {
+        int genNumber = 0;
+        if (!filter.mightContain(remotePath)) {
+          // BKS restarted
+          while (new File(CacheUtil.getLocalPath(remotePath, conf, genNumber)).exists()) {
+            genNumber++;
+          }
+          if (genNumber != 0) genNumber--;
         }
+        else {
+            genNumber = generationNumber.get(remotePath, new Callable<Integer>() {
+              @Override
+              public Integer call() throws Exception {
+                return -1;
+              }
+            });
+            genNumber++;
+            while (new File(CacheUtil.getLocalPath(remotePath, conf, genNumber)).exists()) {
+              genNumber++;
+            }
+          }
         generationNumber.put(remotePath, genNumber);
+        }
       }
-      else {
-        generationNumber.put(remotePath, 0);
-      }
+    finally {
+      lock.unlock();
     }
-    genNumber = generationNumber.get(remotePath);
-    localPath = CacheUtil.getLocalPath(remotePath, conf, genNumber);
-    mdFilePath = CacheUtil.getMetadataFilePath(remotePath, conf, genNumber);
-
+    filter.put(remotePath);
+    generation = generationNumber.getIfPresent(remotePath);
+    localPath = CacheUtil.getLocalPath(remotePath, conf, generation);
+    mdFilePath = CacheUtil.getMetadataFilePath(remotePath, conf, generation);
     int bitsRequired = (int) Math.ceil((double) size / getBlockSize(conf)); //numBlocks
     bitmapFileSizeBytes = (int) Math.ceil((double) bitsRequired / 8);
 
@@ -170,7 +198,6 @@ public class FileMetadata
         setBlockCached(blockNum);
       }
     }
-
     // update mdfile
     try {
       RandomAccessFile mdFile = new RandomAccessFile(mdFilePath, "rw");
@@ -268,5 +295,10 @@ public class FileMetadata
   {
     // this will return the current downloaded size of the file as weight.
     return (int) (currentFileSize / 1024 / 1024);
+  }
+
+  public int getGeneration()
+  {
+    return generation;
   }
 }

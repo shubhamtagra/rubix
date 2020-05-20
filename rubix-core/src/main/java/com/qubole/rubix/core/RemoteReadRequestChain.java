@@ -195,12 +195,12 @@ public class RemoteReadRequestChain extends ReadRequestChain
   }
 
   @Override
-  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf)
+  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf, int generationNumber)
   {
     try (RetryingPooledBookkeeperClient client = bookKeeperFactory.createBookKeeperClient(conf)) {
       for (ReadRequest readRequest : readRequests) {
         log.debug("Setting cached from : " + toBlock(readRequest.getBackendReadStart()) + " block to : " + (toBlock(readRequest.getBackendReadEnd() - 1) + 1));
-        client.setAllCached(remotePath, fileSize, lastModified, toBlock(readRequest.getBackendReadStart()), toBlock(readRequest.getBackendReadEnd() - 1) + 1);
+        client.setAllCached(remotePath, fileSize, lastModified, toBlock(readRequest.getBackendReadStart()), toBlock(readRequest.getBackendReadEnd() - 1) + 1, generationNumber);
       }
     }
     catch (Exception e) {

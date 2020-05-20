@@ -60,10 +60,10 @@ public class ChainedReadRequestChain extends ReadRequestChain
     }
   }
 
-  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf)
+  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf, int generationNumber)
   {
     for (ReadRequestChain readRequestChain : readRequestChains) {
-      readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
+      readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf, generationNumber);
     }
   }
 }

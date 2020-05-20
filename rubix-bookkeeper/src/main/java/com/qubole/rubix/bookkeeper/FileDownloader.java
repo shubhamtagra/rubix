@@ -51,7 +51,6 @@ import static com.qubole.rubix.spi.CommonUtilities.toBlockStartPosition;
 import static com.qubole.rubix.spi.CommonUtilities.toEndBlock;
 import static com.qubole.rubix.spi.CommonUtilities.toStartBlock;
 
-import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 
 /**
  * Created by Abhishek on 3/9/18.
@@ -64,6 +63,7 @@ class FileDownloader
   private MetricRegistry metrics;
   private Counter totalMBDownloaded;
   private Counter totalTimeToDownload;
+  private int genNumber;
 
   private final RemoteFetchProcessor remoteFetchProcessor;
   private final BookKeeper bookKeeper;
@@ -138,7 +138,7 @@ class FileDownloader
                           startBlock,
                           endBlock));
           blockLocations = response.getBlocks();
-          int genNumber = response.getGenerationNumber();
+          genNumber = response.getGenerationNumber();
           localPath = CacheUtil.getLocalPath(remotePath, conf, genNumber);
           log.debug("Processing Request for File : " + path.toString() + " LocalFile : " + localPath);
 
@@ -210,7 +210,7 @@ class FileDownloader
         // metadata gets updated for all the requested blocks.
         if (read == totalBytesToBeDownloaded) {
           requestChain.updateCacheStatus(requestChain.getRemotePath(), requestChain.getFileSize(),
-              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf);
+              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf, genNumber);
           sizeRead += read;
           this.totalTimeToDownload.inc(requestChain.getTimeSpentOnDownload());
         }

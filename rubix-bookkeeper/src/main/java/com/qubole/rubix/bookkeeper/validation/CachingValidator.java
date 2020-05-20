@@ -23,6 +23,7 @@ import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.Location;
+import com.qubole.rubix.spi.thrift.ReadResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -133,7 +134,7 @@ public class CachingValidator extends AbstractScheduledService
           Ints.checkedCast(readSize),
           fileLength,
           fileLastModified,
-          VALIDATOR_CLUSTER_TYPE);
+          VALIDATOR_CLUSTER_TYPE).isStatus();
       if (!dataRead) {
         return false;
       }

@@ -28,6 +28,7 @@ import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.Location;
+import com.qubole.rubix.spi.thrift.ReadResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -50,7 +51,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 
 /**
  * Created by sakshia on 26/10/16.
@@ -209,6 +209,7 @@ public class LocalDataTransferServer extends Configured implements Tool
     SocketChannel localDataTransferClient;
     Configuration conf;
     BookKeeperFactory bookKeeperFactory;
+    int generationNumber;
 
     ClientServiceThread(SocketChannel s, Configuration conf, BookKeeperFactory bookKeeperFactory)
     {
@@ -236,8 +237,10 @@ public class LocalDataTransferServer extends Configured implements Tool
         log.debug(String.format("Trying to read from %s at offset %d and length %d for client %s", remotePath, offset, readLength, localDataTransferClient.getRemoteAddress()));
         try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf)) {
           if (!CacheConfig.isParallelWarmupEnabled(conf)) {
-            if (!bookKeeperClient.readData(remotePath, offset, readLength, header.getFileSize(),
-                    header.getLastModified(), header.getClusterType())) {
+            ReadResponse response = bookKeeperClient.readData(remotePath, offset, readLength, header.getFileSize(),
+                    header.getLastModified(), header.getClusterType());
+            generationNumber = response.getGenerationNumber();
+            if (!response.isStatus()) {
               throw new Exception("Could not cache data required by non-local node");
             }
           }
@@ -253,6 +256,7 @@ public class LocalDataTransferServer extends Configured implements Tool
                     startBlock, endBlock).setClusterType(header.getClusterType());
             CacheStatusResponse response = bookKeeperClient.getCacheStatus(request);
             List<BlockLocation> blockLocations = response.getBlocks();
+            generationNumber = response.getGenerationNumber();
 
             long blockNum = startBlock;
             for (BlockLocation location : blockLocations) {
@@ -292,7 +296,7 @@ public class LocalDataTransferServer extends Configured implements Tool
     {
       FileChannel fc = null;
       int nread = 0;
-      String filename = CacheUtil.getLocalPath(remotePath, conf, generationNumber.get(remotePath));
+      String filename = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
 
       try {
         fc = new FileInputStream(filename).getChannel();

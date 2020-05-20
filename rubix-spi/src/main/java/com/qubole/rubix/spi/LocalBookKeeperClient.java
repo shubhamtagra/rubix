@@ -15,6 +15,7 @@ package com.qubole.rubix.spi;
 import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.CacheStatusResponse;
+import com.qubole.rubix.spi.thrift.ReadResponse;
 import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.HeartbeatStatus;
 import org.apache.thrift.TException;
@@ -41,10 +42,11 @@ public class LocalBookKeeperClient extends RetryingPooledBookkeeperClient
   }
 
   @Override
-  public void setAllCached(final String remotePath, final long fileLength, final long lastModified, final long startBlock, final long endBlock)
+  public void setAllCached(final String remotePath, final long fileLength, final long lastModified,
+                           final long startBlock, final long endBlock, int generationNumber)
       throws TException
   {
-    bookKeeper.setAllCached(remotePath, fileLength, lastModified, startBlock, endBlock);
+    bookKeeper.setAllCached(remotePath, fileLength, lastModified, startBlock, endBlock, generationNumber);
   }
 
   @Override
@@ -55,7 +57,7 @@ public class LocalBookKeeperClient extends RetryingPooledBookkeeperClient
   }
 
   @Override
-  public boolean readData(String path, long readStart, int length, long fileSize, long lastModified, int clusterType)
+  public ReadResponse readData(String path, long readStart, int length, long fileSize, long lastModified, int clusterType)
           throws TException
   {
     return bookKeeper.readData(path, readStart, length, fileSize, lastModified, clusterType);

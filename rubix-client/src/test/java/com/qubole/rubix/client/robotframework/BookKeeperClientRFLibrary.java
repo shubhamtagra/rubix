@@ -18,6 +18,7 @@ import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.ReadResponse;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -62,7 +63,7 @@ public class BookKeeperClientRFLibrary
           readRequest.getReadLength(),
           readRequest.getFileLength(),
           readRequest.getLastModified(),
-          readRequest.getClusterType());
+          readRequest.getClusterType()).isStatus();
     }
   }
 

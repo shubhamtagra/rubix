@@ -26,6 +26,7 @@ import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.Location;
+import com.qubole.rubix.spi.thrift.ReadResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -104,7 +105,8 @@ public class TestCachingValidator
   {
     final BookKeeper bookKeeper = mock(BookKeeper.class);
     when(bookKeeper.getCacheStatus(any(CacheStatusRequest.class))).thenReturn(TEST_LOCATIONS_CACHED);
-    when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(true);
+    ReadResponse response = new ReadResponse(true, 0);
+    when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(response);
 
     checkValidator(bookKeeper, false);
   }
@@ -118,7 +120,8 @@ public class TestCachingValidator
   public void testValidateCachingBehavior_dataNotRead() throws TException
   {
     final BookKeeper bookKeeper = mock(BookKeeper.class);
-    when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(false);
+    ReadResponse response = new ReadResponse(false, 0);
+    when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(response);
 
     checkValidator(bookKeeper, false);
   }
@@ -133,7 +136,8 @@ public class TestCachingValidator
   {
     final BookKeeper bookKeeper = mock(BookKeeper.class);
     when(bookKeeper.getCacheStatus(any(CacheStatusRequest.class))).thenReturn(TEST_LOCATIONS_LOCAL);
-    when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(true);
+    ReadResponse response = new ReadResponse(false, 0);
+    when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(response);
 
     checkValidator(bookKeeper, false);
   }

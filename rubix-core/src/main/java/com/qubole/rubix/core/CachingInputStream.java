@@ -58,6 +58,7 @@ public class CachingInputStream extends FSInputStream
   private long nextReadPosition;
   private long nextReadBlock;
   int blockSize;
+  int generationNumber;
   private CachingFileSystemStats statsMbean;
 
   static ListeningExecutorService readService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(CacheConfig.READ_SERVICE_THREAD_POOL_SIZE, new ThreadFactory()
@@ -98,7 +99,6 @@ public class CachingInputStream extends FSInputStream
     this.conf = conf;
     this.strictMode = CacheConfig.isStrictMode(conf);
     this.remotePath = backendPath.toString();
-    this.localPath = CacheUtil.getLocalPath(remotePath, conf);
     this.blockSize = CacheConfig.getBlockSize(conf);
     this.diskReadBufferSize = CacheConfig.getDiskReadBufferSize(conf);
     this.bookKeeperFactory = bookKeeperFactory;
@@ -303,7 +303,7 @@ public class CachingInputStream extends FSInputStream
   {
     ReadRequestChainStats stats = new ReadRequestChainStats();
     for (ReadRequestChain readRequestChain : readRequestChains) {
-      readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
+      readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf, generationNumber);
       stats = stats.add(readRequestChain.getStats());
     }
     statsMbean.addReadRequestChainStats(stats);
@@ -326,7 +326,6 @@ public class CachingInputStream extends FSInputStream
 
     int lengthAlreadyConsidered = 0;
     List<BlockLocation> isCached = null;
-    int generationNumber = 0;
 
     try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf)) {
       CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified,

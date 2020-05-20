@@ -19,7 +19,6 @@ import com.qubole.rubix.common.metrics.BookKeeperMetrics;
 import com.qubole.rubix.common.utils.DataGen;
 import com.qubole.rubix.common.utils.TestUtil;
 import com.qubole.rubix.core.CachedReadRequestChain;
-import com.qubole.rubix.core.CachedReadRequestChain;
 import com.qubole.rubix.core.ClusterManagerInitilizationException;
 import com.qubole.rubix.core.MockCachingFileSystem;
 import com.qubole.rubix.core.ReadRequest;
@@ -33,8 +32,10 @@ import com.qubole.rubix.spi.ClusterManager;
 import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.FileInfo;
 import com.qubole.rubix.spi.thrift.Location;
+import com.qubole.rubix.spi.thrift.ReadResponse;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -52,7 +53,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static com.qubole.rubix.bookkeeper.BookKeeper.generationNumber;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.FileAssert.fail;
@@ -99,7 +99,6 @@ public class TestBookKeeper
   public void tearDown() throws Exception
   {
     TestUtil.removeCacheParentDirectories(conf, TEST_MAX_DISKS);
-
     bookKeeperMetrics.close();
     conf.clear();
   }
@@ -141,9 +140,8 @@ public class TestBookKeeper
     int offset = 31457280; //30MB
     int holeSize = 5242880;
     int expectedSparseFileSize;
-
-    bookKeeper.readData(remotePathWithScheme, offset, (int) downloadSize, fileSize, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-    verifyDownloadedData(backendFileName, offset, downloadSize);
+    ReadResponse response = bookKeeper.readData(remotePathWithScheme, offset, (int) downloadSize, fileSize, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+    verifyDownloadedData(backendFileName, offset, downloadSize, response.getGenerationNumber());
     expectedSparseFileSize = (int) DiskUtils.bytesToMB(downloadSize);
 
     if (hasHole) {
@@ -151,21 +149,21 @@ public class TestBookKeeper
       // Read from 38th block to 40th block
 
       offset = offset + (int) downloadSize + holeSize; //36MB
-      bookKeeper.readData(remotePathWithScheme, offset, (int) downloadSize, fileSize, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-      verifyDownloadedData(backendFileName, offset, downloadSize);
+      response = bookKeeper.readData(remotePathWithScheme, offset, (int) downloadSize, fileSize, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+      verifyDownloadedData(backendFileName, offset, downloadSize, response.getGenerationNumber());
       expectedSparseFileSize = (int) DiskUtils.bytesToMB(2 * downloadSize);
     }
-    long sparseFileSize = DiskUtils.getDirectorySizeInMB(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf, generationNumber.get(remotePathWithScheme))));
+    long sparseFileSize = DiskUtils.getDirectorySizeInMB(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf, response.getGenerationNumber())));
     assertTrue(sparseFileSize == expectedSparseFileSize, "getDirectorySizeInMB is reporting wrong file Size : " + sparseFileSize);
   }
 
-  private void verifyDownloadedData(String backendFileName, int offset, long downloadSize) throws IOException
+  private void verifyDownloadedData(String backendFileName, int offset, long downloadSize, int generationNumber) throws IOException
   {
     final String remotePathWithScheme = "file://" + backendFileName;
 
     int bufferSize = (int) (offset + downloadSize);
     byte[] buffer = new byte[bufferSize];
-    FileInputStream localFileInputStream = new FileInputStream(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf, generationNumber.get(remotePathWithScheme))));
+    FileInputStream localFileInputStream = new FileInputStream(new File(CacheUtil.getLocalPath(remotePathWithScheme, conf, generationNumber)));
     localFileInputStream.read(buffer, 0, bufferSize);
 
     byte[] backendBuffer = new byte[bufferSize];
@@ -363,8 +361,8 @@ public class TestBookKeeper
             .setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal())
             .setIncrMetrics(true);
 
-    bookKeeper.getCacheStatus(request);
-    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK, TEST_END_BLOCK);
+    CacheStatusResponse response = bookKeeper.getCacheStatus(request);
+    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK, TEST_END_BLOCK, response.getGenerationNumber());
     bookKeeper.getCacheStatus(request);
 
     assertEquals(metrics.getCounters().get(BookKeeperMetrics.CacheMetric.CACHE_REQUEST_COUNT.getMetricName()).getCount(), totalRequests);
@@ -410,9 +408,9 @@ public class TestBookKeeper
     assertEquals(metrics.getGauges().get(BookKeeperMetrics.CacheMetric.CACHE_SIZE_GAUGE.getMetricName()).getValue(), 0);
 
     DataGen.populateFile(TEST_REMOTE_PATH);
-    bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+    ReadResponse response = bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
 
-    final long mdSize = FileUtils.sizeOf(new File(CacheUtil.getMetadataFilePath(TEST_REMOTE_PATH, conf, generationNumber.get(remotePathWithScheme))));
+    final long mdSize = FileUtils.sizeOf(new File(CacheUtil.getMetadataFilePath(TEST_REMOTE_PATH, conf, response.getGenerationNumber())));
     final int totalCacheSize = (int) DiskUtils.bytesToMB(readLength + mdSize);
     assertEquals(metrics.getGauges().get(BookKeeperMetrics.CacheMetric.CACHE_SIZE_GAUGE.getMetricName()).getValue(), totalCacheSize);
   }
@@ -465,12 +463,12 @@ public class TestBookKeeper
         TEST_START_BLOCK, TEST_END_BLOCK)
             .setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal())
             .setIncrMetrics(true);
-    bookKeeper.getCacheStatus(request);
+    CacheStatusResponse response = bookKeeper.getCacheStatus(request);
 
     assertEquals(metrics.getGauges().get(BookKeeperMetrics.CacheMetric.CACHE_HIT_RATE_GAUGE.getMetricName()).getValue(), 0.0);
     assertEquals(metrics.getGauges().get(BookKeeperMetrics.CacheMetric.CACHE_MISS_RATE_GAUGE.getMetricName()).getValue(), 1.0);
 
-    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK, TEST_END_BLOCK);
+    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK, TEST_END_BLOCK, response.getGenerationNumber());
     bookKeeper.getCacheStatus(request);
 
     assertEquals(metrics.getGauges().get(BookKeeperMetrics.CacheMetric.CACHE_HIT_RATE_GAUGE.getMetricName()).getValue(), 0.5);
@@ -487,33 +485,21 @@ public class TestBookKeeper
             TEST_START_BLOCK, TEST_END_BLOCK)
             .setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal())
             .setIncrMetrics(true);
-    bookKeeper.getCacheStatus(request);
+    CacheStatusResponse response = bookKeeper.getCacheStatus(request);
+    int genNumber = response.getGenerationNumber();
 
     long size = bookKeeper.getFileMetadata(TEST_REMOTE_PATH).getCurrentFileSize();
     assertTrue(size == 0, "Non zero size before any data cached: " + size);
-    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK, TEST_END_BLOCK);
+    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK, TEST_END_BLOCK, genNumber);
     size = bookKeeper.getFileMetadata(TEST_REMOTE_PATH).getCurrentFileSize();
     assertTrue(size == (TEST_END_BLOCK - TEST_START_BLOCK) * CacheConfig.getBlockSize(conf),
             String.format("Expected size: %s but found %s", (TEST_END_BLOCK - TEST_START_BLOCK) * CacheConfig.getBlockSize(conf), size));
 
     // Now a overlapping request of 10 new blocks, new size of FileMetadata should only increase for these 10 new blocks
-    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK - 5, TEST_END_BLOCK + 5);
+    bookKeeper.setAllCached(TEST_REMOTE_PATH, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, TEST_START_BLOCK - 5, TEST_END_BLOCK + 5, genNumber);
     long newSize = bookKeeper.getFileMetadata(TEST_REMOTE_PATH).getCurrentFileSize();
     assertTrue(newSize == size + 10 * CacheConfig.getBlockSize(conf),
             String.format("Expected size: %s but found %s", (size + 10) * CacheConfig.getBlockSize(conf), newSize));
-  }
-
-  @Test
-  void testgenerationNumber() throws TException, IOException {
-    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
-    final int readOffset = 0;
-    final int readLength = 2000;
-    DataGen.populateFile(TEST_REMOTE_PATH);
-    CacheStatusRequest request = new CacheStatusRequest(remotePathWithScheme, TEST_FILE_LENGTH, TEST_LAST_MODIFIED,
-            0, 20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-    bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-    bookKeeper.invalidateFileMetadata(remotePathWithScheme);
-    assertEquals(1, bookKeeper.getCacheStatus(request).getGenerationNumber());
   }
 
   @Test
@@ -599,5 +585,19 @@ public class TestBookKeeper
             new ReadRequest(1600, 1700, 1600, 1700, buffer, 800, fileSize),
             new ReadRequest(1800, 1900, 1800, 1900, buffer, 900, fileSize),
     };
+  }
+
+  @Test
+  void testgenerationNumber() throws TException, IOException {
+    System.out.println("running test testgenerationNumber ");
+    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
+    final int readOffset = 0;
+    final int readLength = 2000;
+    DataGen.populateFile(TEST_REMOTE_PATH);
+    CacheStatusRequest request = new CacheStatusRequest(remotePathWithScheme, TEST_FILE_LENGTH, TEST_LAST_MODIFIED,
+            0, 20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+     bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+     bookKeeper.invalidateFileMetadata(remotePathWithScheme);
+     assertEquals( bookKeeper.getCacheStatus(request).getGenerationNumber(), 1);
   }
 }

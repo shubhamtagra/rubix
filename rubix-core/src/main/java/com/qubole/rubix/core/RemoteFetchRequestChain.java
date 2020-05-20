@@ -78,7 +78,7 @@ public class RemoteFetchRequestChain extends ReadRequestChain
   }
 
   @Override
-  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf)
+  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf, int generationNumber)
   {
     if (CacheConfig.isDummyModeEnabled(conf)) {
       try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(remoteNodeLocation, conf)) {
@@ -88,7 +88,7 @@ public class RemoteFetchRequestChain extends ReadRequestChain
           // getCacheStatus() call required to create mdfiles before blocks are set as cached
           CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified, startBlock, endBlock).setClusterType(clusterType);
           bookKeeperClient.getCacheStatus(request);
-          bookKeeperClient.setAllCached(remotePath, fileSize, lastModified, startBlock, endBlock);
+          bookKeeperClient.setAllCached(remotePath, fileSize, lastModified, startBlock, endBlock, generationNumber);
         }
       }
       catch (Exception e) {

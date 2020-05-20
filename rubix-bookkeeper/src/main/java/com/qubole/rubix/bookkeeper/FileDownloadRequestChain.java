@@ -17,7 +17,6 @@ import com.qubole.rubix.core.ReadRequest;
 import com.qubole.rubix.core.ReadRequestChain;
 import com.qubole.rubix.core.ReadRequestChainStats;
 import com.qubole.rubix.spi.CacheConfig;
-import com.qubole.rubix.spi.CacheUtil;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -204,12 +203,15 @@ public class FileDownloadRequestChain extends ReadRequestChain
   }
 
   @Override
-  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf)
+  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf, int generationNumber)
   {
     try {
       for (ReadRequest readRequest : getReadRequests()) {
         log.debug("Setting cached from : " + toStartBlock(readRequest.getBackendReadStart(), blockSize) + " block to : " + (toEndBlock(readRequest.getBackendReadEnd(), blockSize)));
-        bookKeeper.setAllCached(remotePath, fileSize, lastModified, toStartBlock(readRequest.getBackendReadStart(), blockSize), toEndBlock(readRequest.getBackendReadEnd(), blockSize));
+        bookKeeper.setAllCached(remotePath, fileSize, lastModified,
+                toStartBlock(readRequest.getBackendReadStart(), blockSize),
+                toEndBlock(readRequest.getBackendReadEnd(), blockSize),
+                generationNumber);
       }
     }
     catch (Exception e) {
