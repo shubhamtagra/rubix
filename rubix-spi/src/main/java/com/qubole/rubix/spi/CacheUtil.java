@@ -158,7 +158,7 @@ public class CacheUtil
   public static String getLocalPath(String remotePath, Configuration conf, int generationNumber)
   {
     final String absLocation = getDirectory(remotePath, conf);
-    return absLocation + "/" + getName(remotePath) + "g" + generationNumber;
+    return String.format("%s/%s_g%s", absLocation, getName(remotePath), generationNumber);
   }
 
   public static String getRemotePath(String localPath, Configuration conf)
@@ -180,7 +180,7 @@ public class CacheUtil
   public static String getMetadataFilePath(String remotePath, Configuration conf, int generationNumber)
   {
     final String absLocation = getDirectory(remotePath, conf);
-    return absLocation + "/" + getName(remotePath) + CacheConfig.getCacheMetadataFileSuffix(conf) + "g" + generationNumber;
+    return String.format("%s/%s%s_g%s",absLocation, getName(remotePath), CacheConfig.getCacheMetadataFileSuffix(conf), generationNumber);
   }
 
   /**

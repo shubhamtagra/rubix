@@ -14,11 +14,11 @@ package com.qubole.rubix.bookkeeper;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalCause;
 import com.google.common.hash.BloomFilter;
-import com.google.common.hash.Funnels;
+import com.google.common.io.Closer;
 import com.google.common.util.concurrent.Striped;
+import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -28,11 +28,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.charset.Charset;
 import java.util.OptionalInt;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
 import static com.qubole.rubix.spi.CacheConfig.getBlockSize;
@@ -49,67 +46,48 @@ public class FileMetadata
   private long lastModified;
   private long currentFileSize;
   private boolean needsRefresh = true;
-  private int generation;
+  private int generationNumber;
 
   int bitmapFileSizeBytes;
   ByteBufferBitmap blockBitmap;
 
   static Striped<Lock> stripes = Striped.lock(20000);
-  //  Maintains generation number for remote file
-  //  If multiple threads call get of guava cache , then all are blocked and computation is done for one
-  //  and values is returned to other blocked threads.
-  static Cache<String, Integer> generationNumber = CacheBuilder.newBuilder()
-          .expireAfterWrite(2, TimeUnit.HOURS)
-          .build();
-  static BloomFilter filter = BloomFilter.create(Funnels.stringFunnel(Charset.defaultCharset()), 1000000, 0.01);;
 
   private static Log log = LogFactory.getLog(FileMetadata.class.getName());
 
-  public FileMetadata()
+  // This constructor should not be called in parallel for same remotePath
+  public FileMetadata(String remotePath,
+                      long fileLength,
+                      long lastModified,
+                      long currentFileSize,
+                      Configuration conf,
+                      Cache<String, Integer> generationNumberCache,
+                      BloomFilter filenameBloomFilter)
+          throws ExecutionException
   {
+    this(remotePath,
+            fileLength,
+            lastModified,
+            currentFileSize,
+            conf,
+            findGenerationNumber(remotePath, conf, generationNumberCache, filenameBloomFilter));
   }
 
-  public FileMetadata(String remotePath, long fileLength, long lastModified, long currentFileSize, Configuration conf, boolean newFileEntry)
-          throws IOException, ExecutionException
+
+  public FileMetadata(String remotePath,
+                      long fileLength,
+                      long lastModified,
+                      long currentFileSize,
+                      Configuration conf,
+                      int generationNumber)
   {
     this.remotePath = remotePath;
     this.size = fileLength;
     this.lastModified = lastModified;
     this.currentFileSize = currentFileSize;
-    Lock lock = stripes.get(remotePath);
-    try {
-      lock.lock();
-      if (newFileEntry) {
-        int genNumber = 0;
-        if (!filter.mightContain(remotePath)) {
-          // BKS restarted
-          while (new File(CacheUtil.getLocalPath(remotePath, conf, genNumber)).exists()) {
-            genNumber++;
-          }
-          if (genNumber != 0) genNumber--;
-        }
-        else {
-            genNumber = generationNumber.get(remotePath, new Callable<Integer>() {
-              @Override
-              public Integer call() throws Exception {
-                return -1;
-              }
-            });
-            genNumber++;
-            while (new File(CacheUtil.getLocalPath(remotePath, conf, genNumber)).exists()) {
-              genNumber++;
-            }
-          }
-        generationNumber.put(remotePath, genNumber);
-        }
-      }
-    finally {
-      lock.unlock();
-    }
-    filter.put(remotePath);
-    generation = generationNumber.getIfPresent(remotePath);
-    localPath = CacheUtil.getLocalPath(remotePath, conf, generation);
-    mdFilePath = CacheUtil.getMetadataFilePath(remotePath, conf, generation);
+    this.generationNumber = generationNumber;
+    localPath = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
+    mdFilePath = CacheUtil.getMetadataFilePath(remotePath, conf, generationNumber);
     int bitsRequired = (int) Math.ceil((double) size / getBlockSize(conf)); //numBlocks
     bitmapFileSizeBytes = (int) Math.ceil((double) bitsRequired / 8);
 
@@ -117,6 +95,76 @@ public class FileMetadata
      * Caution: Do no call refreshBitmap in constructor as it breaks the assumptions in delete path and it could
      * cause race conditions
      */
+  }
+
+  // Should not be called in parallel for the same remotePath
+  private static int findGenerationNumber(String remotePath,
+                                          Configuration conf,
+                                          Cache<String, Integer> generationNumberCache,
+                                          BloomFilter filenameBloomFilter)
+          throws ExecutionException
+  {
+    int genNumber;
+    Closer oldFilesRemover = Closer.create();
+
+    if (!filenameBloomFilter.mightContain(remotePath)) {
+      // first access to the file since BKS started
+
+      // Find the highest genNumber based on files on disk
+      int highestGenNumberOnDisk = 0;
+      while (new File(CacheUtil.getLocalPath(remotePath, conf, highestGenNumberOnDisk)).exists() ||
+              new File(CacheUtil.getMetadataFilePath(remotePath, conf, highestGenNumberOnDisk)).exists()) {
+        highestGenNumberOnDisk++;
+      }
+      highestGenNumberOnDisk--;  // -1 => No file on disk
+
+      if (CacheConfig.isCleanupFilesDuringStartEnabled(conf)) {
+        // Pick the generationNumber as one more than the highestGenNumberOnDisk
+        addFilesForDeletion(oldFilesRemover, highestGenNumberOnDisk, remotePath, conf);
+        genNumber = highestGenNumberOnDisk + 1;
+      }
+      else {
+        // If no files exists for this path on disk then start with genNum=0
+        if (highestGenNumberOnDisk == -1) {
+          genNumber = 0;
+        }
+        // If both datafile and mdfile exist for highestGenNumberOnDisk, use that as genNumber
+        else if (new File(CacheUtil.getLocalPath(remotePath, conf, highestGenNumberOnDisk)).exists() &&
+                new File(CacheUtil.getMetadataFilePath(remotePath, conf, highestGenNumberOnDisk)).exists()) {
+          addFilesForDeletion(oldFilesRemover, highestGenNumberOnDisk - 1, remotePath, conf);
+          genNumber = highestGenNumberOnDisk;
+        }
+        else {
+          addFilesForDeletion(oldFilesRemover, highestGenNumberOnDisk, remotePath, conf);
+          genNumber = highestGenNumberOnDisk + 1;
+        }
+      }
+      filenameBloomFilter.put(remotePath);
+    }
+    else {
+      genNumber = generationNumberCache.get(remotePath, () -> -1) + 1;
+      while (new File(CacheUtil.getLocalPath(remotePath, conf, genNumber)).exists() ||
+              new File(CacheUtil.getMetadataFilePath(remotePath, conf, genNumber)).exists()) {
+        genNumber++;
+      }
+      addFilesForDeletion(oldFilesRemover, genNumber - 1, remotePath, conf);
+    }
+    generationNumberCache.put(remotePath, genNumber);
+    try {
+      oldFilesRemover.close();
+    }
+    catch (IOException e) {
+      log.warn("Exception while deleting old files", e);
+    }
+    return genNumber;
+  }
+
+  private static void addFilesForDeletion(Closer fileRemover, int generationNumber, String remotePath, Configuration conf)
+  {
+    for (int i = 0; i <= generationNumber; i++) {
+      fileRemover.register(new File(CacheUtil.getLocalPath(remotePath, conf, i))::delete);
+      fileRemover.register(new File(CacheUtil.getMetadataFilePath(remotePath, conf, i))::delete);
+    }
   }
 
   long incrementCurrentFileSize(long incrementBy)
@@ -297,8 +345,8 @@ public class FileMetadata
     return (int) (currentFileSize / 1024 / 1024);
   }
 
-  public int getGeneration()
+  public int getGenerationNumber()
   {
-    return generation;
+    return generationNumber;
   }
 }

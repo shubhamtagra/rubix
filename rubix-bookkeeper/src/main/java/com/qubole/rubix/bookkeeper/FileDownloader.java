@@ -63,7 +63,7 @@ class FileDownloader
   private MetricRegistry metrics;
   private Counter totalMBDownloaded;
   private Counter totalTimeToDownload;
-  private int genNumber;
+  private int generationNumber;
 
   private final RemoteFetchProcessor remoteFetchProcessor;
   private final BookKeeper bookKeeper;
@@ -106,7 +106,6 @@ class FileDownloader
       FileSystem fs = FileSystem.get(path.toUri(), conf);
       fs.initialize(path.toUri(), conf);
 
-      String localPath;
       ByteBuffer directWriteBuffer = bufferPool.getBuffer(diskReadBufferSize);
       FileDownloadRequestChain requestChain = null;
       String remotePath = entry.getKey();
@@ -138,12 +137,11 @@ class FileDownloader
                           startBlock,
                           endBlock));
           blockLocations = response.getBlocks();
-          genNumber = response.getGenerationNumber();
-          localPath = CacheUtil.getLocalPath(remotePath, conf, genNumber);
-          log.debug("Processing Request for File : " + path.toString() + " LocalFile : " + localPath);
-
+          generationNumber = response.getGenerationNumber();
           if (requestChain == null)
           {
+            String localPath = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
+            log.debug("Processing Request for File : " + path.toString() + " LocalFile : " + localPath);
             requestChain = new FileDownloadRequestChain(bookKeeper, fs, localPath,
                     directWriteBuffer, conf, context.getRemoteFilePath(), context.getFileSize(),
                     context.getLastModifiedTime());
@@ -210,7 +208,7 @@ class FileDownloader
         // metadata gets updated for all the requested blocks.
         if (read == totalBytesToBeDownloaded) {
           requestChain.updateCacheStatus(requestChain.getRemotePath(), requestChain.getFileSize(),
-              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf, genNumber);
+              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf, generationNumber);
           sizeRead += read;
           this.totalTimeToDownload.inc(requestChain.getTimeSpentOnDownload());
         }

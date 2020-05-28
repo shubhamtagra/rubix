@@ -120,11 +120,7 @@ public class CachingValidator extends AbstractScheduledService
 
     try {
       CacheStatusResponse response = bookKeeper.getCacheStatus(request);
-      if (response == null) {
-        return false;
-      }
-      List<BlockLocation> locations = response.getBlocks();
-      if (locations.isEmpty() || locations.get(0).getLocation() != Location.LOCAL) {
+      if (response == null || response.getBlocks().isEmpty() || response.getBlocks().get(0).getLocation() != Location.LOCAL) {
         return false;
       }
 
@@ -139,7 +135,7 @@ public class CachingValidator extends AbstractScheduledService
         return false;
       }
 
-      locations = bookKeeper.getCacheStatus(request).getBlocks();
+      List<BlockLocation> locations = bookKeeper.getCacheStatus(request).getBlocks();
       if (locations.isEmpty() || locations.get(0).getLocation() != Location.CACHED) {
         return false;
       }
