@@ -503,7 +503,7 @@ public class TestBookKeeper
   }
 
   @Test
-  void testCachedReadWithInvalidation() throws IOException, TException, InterruptedException {
+  void testReadWithInvalidation() throws IOException, TException, InterruptedException {
     final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
     final int readOffset = 0;
     final int readLength = 2000;
@@ -520,76 +520,43 @@ public class TestBookKeeper
     Thread invalidateRequest = new Thread(new Runnable() {
       @Override
       public void run() {
-        bookKeeper.invalidateFileMetadata(remotePathWithScheme);
+        for (int i = 1; i < 15; i++)
+        {
+          bookKeeper.invalidateFileMetadata(remotePathWithScheme);
+          try {
+            Thread.sleep(1000);
+          } catch (InterruptedException e) {
+            e.printStackTrace();
+          }
+        }
       }
     });
     Thread readrequest = new Thread(new Runnable() {
       @Override
       public void run() {
-        try {
-          List<BlockLocation> blockLocations = bookKeeper.getCacheStatus(request).getBlocks();
-          for (BlockLocation location : blockLocations) {
-            // once invalidated, should never be cached
-            if (location.getLocation() == Location.CACHED) {
-              byte[] buffer = new byte[1000];
-              CachedReadRequestChain cachedReadRequestChain = getCachedReadRequestChain(buffer);
-              cachedReadRequestChain.lock();
-              int readSize = Math.toIntExact(cachedReadRequestChain.call());
-              // it will read correct data if it does not find the file (from remote) or has opened the fd
-              // next read request will generate local file with new generation number for the corresponding remote path
-              assertEquals(1000, readSize);
-            }
-          }
-        }
-        catch (Exception e)
+        for (int i = 1; i < 200; i++)
         {
-          log.info("failed with exception ", e);
-          fail();
+          try {
+            ReadResponse response = bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
+            Thread.sleep(100);
+            assertEquals(response.isStatus(), true);
+          }
+          catch (Exception e)
+          {
+            fail();
+          }
         }
       }
     });
     invalidateRequest.start();
     readrequest.start();
-    invalidateRequest.join();
     readrequest.join();
-  }
-
-  private CachedReadRequestChain getCachedReadRequestChain(byte[] buffer) throws IOException
-  {
-    MockCachingFileSystem fs = new MockCachingFileSystem();
-    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
-    Path backendFilePath = new Path(remotePathWithScheme);
-    fs.initialize(backendFilePath.toUri(), conf);
-    ReadRequest[] readRequests = getReadRequests(buffer);
-    BookKeeperFactory factory;
-    factory = new BookKeeperFactory();
-    CachedReadRequestChain cachedReadRequestChain = new CachedReadRequestChain(fs, remotePathWithScheme, conf, factory, 0);
-    for (ReadRequest rr : readRequests) {
-      cachedReadRequestChain.addReadRequest(rr);
-    }
-    return cachedReadRequestChain;
-  }
-
-  private ReadRequest[] getReadRequests(byte[] buffer)
-  {
-    int fileSize = 2000;
-    return new ReadRequest[]{
-            new ReadRequest(0, 100, 0, 100, buffer, 0, fileSize),
-            new ReadRequest(200, 300, 200, 300, buffer, 100, fileSize),
-            new ReadRequest(400, 500, 400, 500, buffer, 200, fileSize),
-            new ReadRequest(600, 700, 600, 700, buffer, 300, fileSize),
-            new ReadRequest(800, 900, 800, 900, buffer, 400, fileSize),
-            new ReadRequest(1000, 1100, 1000, 1100, buffer, 500, fileSize),
-            new ReadRequest(1200, 1300, 1200, 1300, buffer, 600, fileSize),
-            new ReadRequest(1400, 1500, 1400, 1500, buffer, 700, fileSize),
-            new ReadRequest(1600, 1700, 1600, 1700, buffer, 800, fileSize),
-            new ReadRequest(1800, 1900, 1800, 1900, buffer, 900, fileSize),
-    };
+    invalidateRequest.join();
   }
 
   @Test
-  void testgenerationNumber() throws TException, IOException {
-    System.out.println("running test testgenerationNumber ");
+  void testgenerationNumber() throws TException, IOException
+  {
     final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
     final int readOffset = 0;
     final int readLength = 2000;
@@ -598,6 +565,6 @@ public class TestBookKeeper
             0, 20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
      bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
      bookKeeper.invalidateFileMetadata(remotePathWithScheme);
-     assertEquals( bookKeeper.getCacheStatus(request).getGenerationNumber(), 1);
+     assertEquals(bookKeeper.getCacheStatus(request).getGenerationNumber(), 1);
   }
 }

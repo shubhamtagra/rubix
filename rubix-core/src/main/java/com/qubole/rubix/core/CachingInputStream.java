@@ -75,7 +75,6 @@ public class CachingInputStream extends FSInputStream
 
   protected final String remotePath;
   private long fileSize;
-  private String localPath;
   private long lastModified;
 
   Configuration conf;
@@ -440,7 +439,7 @@ public class CachingInputStream extends FSInputStream
             if (affixBuffer == null) {
               affixBuffer = new byte[blockSize];
             }
-            localPath = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
+            String localPath = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
             if (remoteReadRequestChain == null) {
               remoteReadRequestChain = new RemoteReadRequestChain(getParentDataInputStream(), localPath, bufferPool, diskReadBufferSize, affixBuffer, bookKeeperFactory);
             }
