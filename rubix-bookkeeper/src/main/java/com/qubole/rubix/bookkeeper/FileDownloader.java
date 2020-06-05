@@ -47,6 +47,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 
+import static com.google.common.base.Preconditions.checkState;
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 import static com.qubole.rubix.spi.CommonUtilities.toBlockStartPosition;
 import static com.qubole.rubix.spi.CommonUtilities.toEndBlock;
 import static com.qubole.rubix.spi.CommonUtilities.toStartBlock;
@@ -63,7 +65,6 @@ class FileDownloader
   private MetricRegistry metrics;
   private Counter totalMBDownloaded;
   private Counter totalTimeToDownload;
-  private int generationNumber;
 
   private final RemoteFetchProcessor remoteFetchProcessor;
   private final BookKeeper bookKeeper;
@@ -102,6 +103,7 @@ class FileDownloader
     for (Map.Entry<String, DownloadRequestContext> entry : contextMap.entrySet()) {
       Path path = new Path(entry.getKey());
       DownloadRequestContext context = entry.getValue();
+      int generationNumber = UNKONWN_GENERATION_NUMBER;
 
       FileSystem fs = FileSystem.get(path.toUri(), conf);
       fs.initialize(path.toUri(), conf);
@@ -137,6 +139,14 @@ class FileDownloader
                           startBlock,
                           endBlock));
           blockLocations = response.getBlocks();
+          if(generationNumber != UNKONWN_GENERATION_NUMBER && response.getGenerationNumber() != generationNumber) {
+            log.warn(String.format("Mismatch in generation-number in download requests for file %s, expected=%d but found=%d, skipping the file",
+                    remotePath, generationNumber, response.getGenerationNumber()));
+            // Do not add the requests back as there has been invalidation of the file which means there is a good chance
+            // that the file is not needed anymore. If it is needed, then next read will add new requests for it
+            requestChain = null;
+            break;
+          }
           generationNumber = response.getGenerationNumber();
           if (requestChain == null)
           {
@@ -144,7 +154,7 @@ class FileDownloader
             log.debug("Processing Request for File : " + path.toString() + " LocalFile : " + localPath);
             requestChain = new FileDownloadRequestChain(bookKeeper, fs, localPath,
                     directWriteBuffer, conf, context.getRemoteFilePath(), context.getFileSize(),
-                    context.getLastModifiedTime());
+                    context.getLastModifiedTime(), generationNumber);
           }
         }
         catch (Exception e) {
@@ -208,7 +218,7 @@ class FileDownloader
         // metadata gets updated for all the requested blocks.
         if (read == totalBytesToBeDownloaded) {
           requestChain.updateCacheStatus(requestChain.getRemotePath(), requestChain.getFileSize(),
-              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf, generationNumber);
+              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf, requestChain.getGenerationNumber());
           sizeRead += read;
           this.totalTimeToDownload.inc(requestChain.getTimeSpentOnDownload());
         }

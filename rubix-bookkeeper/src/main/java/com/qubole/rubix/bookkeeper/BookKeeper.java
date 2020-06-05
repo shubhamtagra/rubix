@@ -88,6 +88,7 @@ import static com.qubole.rubix.common.metrics.BookKeeperMetrics.CacheMetric.CACH
 import static com.qubole.rubix.common.metrics.BookKeeperMetrics.CacheMetric.NONLOCAL_REQUEST_COUNT;
 import static com.qubole.rubix.common.metrics.BookKeeperMetrics.CacheMetric.REMOTE_REQUEST_COUNT;
 import static com.qubole.rubix.common.metrics.BookKeeperMetrics.CacheMetric.TOTAL_REQUEST_COUNT;
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 import static com.qubole.rubix.spi.ClusterType.TEST_CLUSTER_MANAGER;
 import static com.qubole.rubix.spi.ClusterType.TEST_CLUSTER_MANAGER_MULTINODE;
 
@@ -96,10 +97,10 @@ import static com.qubole.rubix.spi.ClusterType.TEST_CLUSTER_MANAGER_MULTINODE;
  */
 public abstract class BookKeeper implements BookKeeperService.Iface
 {
+  private static final int MAX_FILES_EXPECTED = 1000000;
+  private static final double FILE_ACCESSED_FILTER_FPP = 0.01;
   private static Log log = LogFactory.getLog(BookKeeper.class);
   private static DirectBufferPool bufferPool = new DirectBufferPool();
-  private static final int EXPECTED_INSERTIONS = 1000000;
-  private static final double FALSE_POSITIVE_PROBABILITY = 0.01;
 
   protected static Cache<String, FileMetadata> fileMetadataCache;
   private static LoadingCache<String, FileInfo> fileInfoCache;
@@ -131,7 +132,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
 
   //  Maintains generation number for remote file
   private Cache<String, Integer> generationNumberCache;
-  private BloomFilter filenameBloomFilter;
+  private BloomFilter fileAccessedBloomFilter;
 
   public BookKeeper(Configuration conf, BookKeeperMetrics bookKeeperMetrics) throws FileNotFoundException
   {
@@ -284,7 +285,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     }
 
     FileMetadata md;
-    //  If multiple threads call get of guava cache , then all are blocked and computation is done for one
+    //  If multiple threads call get of guava cache, then all but one get blocked and computation is done for it
     //  and values is returned to other blocked threads.
     try {
       md = fileMetadataCache.get(remotePath, new CreateFileMetadataCallable(
@@ -294,7 +295,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
               0,
               conf,
               generationNumberCache,
-              filenameBloomFilter));
+              fileAccessedBloomFilter));
       if (isInvalidationRequired(md.getLastModified(), lastModified)) {
         invalidateFileMetadata(remotePath);
         md = fileMetadataCache.get(remotePath, new CreateFileMetadataCallable(remotePath,
@@ -303,7 +304,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
                 0,
                 conf,
                 generationNumberCache,
-                filenameBloomFilter));
+                fileAccessedBloomFilter));
       }
     }
     catch (ExecutionException e) {
@@ -522,13 +523,9 @@ public abstract class BookKeeper implements BookKeeperService.Iface
   {
     if (CacheConfig.isParallelWarmupEnabled(conf)) {
       startRemoteFetchProcessor();
-      log.debug("Adding to the queue Path : " + remotePath + " Offste : " + offset + " Length " + length);
+      log.debug("Adding to the queue Path : " + remotePath + " Offset : " + offset + " Length " + length);
       fetchProcessor.addToProcessQueue(remotePath, offset, length, fileSize, lastModified);
-      FileMetadata md = fileMetadataCache.getIfPresent(remotePath);
-      if (md == null) {
-        return new ReadResponse(false, -1);
-      }
-      return new ReadResponse(true, md.getGenerationNumber());
+      return new ReadResponse(false, UNKONWN_GENERATION_NUMBER);
     }
     else {
       return readDataInternal(remotePath, offset, length, fileSize, lastModified, clusterType);
@@ -686,7 +683,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
         .expireAfterWrite(CacheConfig.getCacheDataExpirationAfterWrite(conf), TimeUnit.MILLISECONDS)
         .removalListener(new CacheRemovalListener())
         .build();
-    filenameBloomFilter = BloomFilter.create(Funnels.stringFunnel(Charset.defaultCharset()), EXPECTED_INSERTIONS, FALSE_POSITIVE_PROBABILITY);
+    fileAccessedBloomFilter = BloomFilter.create(Funnels.stringFunnel(Charset.defaultCharset()), MAX_FILES_EXPECTED, FILE_ACCESSED_FILTER_FPP);
     generationNumberCache = CacheBuilder.newBuilder()
             .expireAfterAccess(2, TimeUnit.HOURS)
             .build();
@@ -767,7 +764,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     long lastModified;
     long currentFileSize;
     Cache<String, Integer> generationNumberCache;
-    BloomFilter filenameBloomFilter;
+    BloomFilter fileAccessedBloomFilter;
 
     public CreateFileMetadataCallable(String path,
                                       long fileLength,
@@ -775,7 +772,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
                                       long currentFileSize,
                                       Configuration conf,
                                       Cache<String, Integer> generationNumberCache,
-                                      BloomFilter filenameBloomFilter)
+                                      BloomFilter fileAccessedBloomFilter)
     {
       this.path = path;
       this.conf = conf;
@@ -783,13 +780,13 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       this.lastModified = lastModified;
       this.currentFileSize = currentFileSize;
       this.generationNumberCache = generationNumberCache;
-      this.filenameBloomFilter = filenameBloomFilter;
+      this.fileAccessedBloomFilter = fileAccessedBloomFilter;
     }
 
     public FileMetadata call()
         throws Exception
     {
-      return new FileMetadata(path, fileLength, lastModified, currentFileSize, conf, generationNumberCache, filenameBloomFilter);
+      return new FileMetadata(path, fileLength, lastModified, currentFileSize, conf, generationNumberCache, fileAccessedBloomFilter);
     }
   }
 

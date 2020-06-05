@@ -42,6 +42,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.concurrent.Executors;
 
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -58,8 +59,8 @@ public class TestCachingValidator
   private static final int TEST_MAX_DISKS = 1;
   private static final int TEST_VALIDATION_INTERVAL = 1000; // ms
   private static final String TEST_REMOTE_LOCATION = "testLocation";
-  private static final CacheStatusResponse TEST_LOCATIONS_CACHED = new CacheStatusResponse(Lists.newArrayList(new BlockLocation(Location.CACHED, TEST_REMOTE_LOCATION)), 0);
-  private static final CacheStatusResponse TEST_LOCATIONS_LOCAL = new CacheStatusResponse(Lists.newArrayList(new BlockLocation(Location.LOCAL, TEST_REMOTE_LOCATION)), 0);
+  private static final CacheStatusResponse TEST_LOCATIONS_CACHED = new CacheStatusResponse(Lists.newArrayList(new BlockLocation(Location.CACHED, TEST_REMOTE_LOCATION)), UNKONWN_GENERATION_NUMBER + 1);
+  private static final CacheStatusResponse TEST_LOCATIONS_LOCAL = new CacheStatusResponse(Lists.newArrayList(new BlockLocation(Location.LOCAL, TEST_REMOTE_LOCATION)), UNKONWN_GENERATION_NUMBER + 1);
 
   private final Configuration conf = new Configuration();
 
@@ -105,7 +106,7 @@ public class TestCachingValidator
   {
     final BookKeeper bookKeeper = mock(BookKeeper.class);
     when(bookKeeper.getCacheStatus(any(CacheStatusRequest.class))).thenReturn(TEST_LOCATIONS_CACHED);
-    ReadResponse response = new ReadResponse(true, 0);
+    ReadResponse response = new ReadResponse(true, UNKONWN_GENERATION_NUMBER);
     when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(response);
 
     checkValidator(bookKeeper, false);
@@ -120,7 +121,7 @@ public class TestCachingValidator
   public void testValidateCachingBehavior_dataNotRead() throws TException
   {
     final BookKeeper bookKeeper = mock(BookKeeper.class);
-    ReadResponse response = new ReadResponse(false, 0);
+    ReadResponse response = new ReadResponse(false, UNKONWN_GENERATION_NUMBER);
     when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(response);
 
     checkValidator(bookKeeper, false);
@@ -136,7 +137,7 @@ public class TestCachingValidator
   {
     final BookKeeper bookKeeper = mock(BookKeeper.class);
     when(bookKeeper.getCacheStatus(any(CacheStatusRequest.class))).thenReturn(TEST_LOCATIONS_LOCAL);
-    ReadResponse response = new ReadResponse(false, 0);
+    ReadResponse response = new ReadResponse(false, UNKONWN_GENERATION_NUMBER);
     when(bookKeeper.readData(anyString(), anyLong(), anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(response);
 
     checkValidator(bookKeeper, false);

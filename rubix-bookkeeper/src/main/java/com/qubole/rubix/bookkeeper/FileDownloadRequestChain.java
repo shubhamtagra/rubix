@@ -48,6 +48,7 @@ public class FileDownloadRequestChain extends ReadRequestChain
   private long totalRequestedRead;
   private int warmupPenalty;
   private final int maxRemoteReadBufferSize;
+  private final int generationNumber;
   Configuration conf;
   ByteBuffer directBuffer;
   private long timeSpentOnDownload;
@@ -56,7 +57,7 @@ public class FileDownloadRequestChain extends ReadRequestChain
 
   public FileDownloadRequestChain(BookKeeper bookKeeper, FileSystem remoteFileSystem, String localfile,
                                   ByteBuffer directBuffer, Configuration conf, String remotePath,
-                                  long fileSize, long lastModified)
+                                  long fileSize, long lastModified, int generationNumber)
   {
     this.bookKeeper = bookKeeper;
     this.remoteFileSystem = remoteFileSystem;
@@ -67,6 +68,7 @@ public class FileDownloadRequestChain extends ReadRequestChain
     this.lastModified = lastModified;
     this.directBuffer = directBuffer;
     this.maxRemoteReadBufferSize = CacheConfig.getDataTransferBufferSize(conf);
+    this.generationNumber = generationNumber;
   }
 
   public String getRemotePath()
@@ -225,5 +227,10 @@ public class FileDownloadRequestChain extends ReadRequestChain
         .setRequestedRead(totalRequestedRead)
         .setWarmupPenalty(warmupPenalty)
         .setRemoteReads(requests);
+  }
+
+  public int getGenerationNumber()
+  {
+    return generationNumber;
   }
 }

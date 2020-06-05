@@ -18,23 +18,17 @@ import com.qubole.rubix.bookkeeper.utils.DiskUtils;
 import com.qubole.rubix.common.metrics.BookKeeperMetrics;
 import com.qubole.rubix.common.utils.DataGen;
 import com.qubole.rubix.common.utils.TestUtil;
-import com.qubole.rubix.core.CachedReadRequestChain;
 import com.qubole.rubix.core.ClusterManagerInitilizationException;
-import com.qubole.rubix.core.MockCachingFileSystem;
-import com.qubole.rubix.core.ReadRequest;
 import com.qubole.rubix.core.utils.DummyClusterManager;
 import com.qubole.rubix.hadoop2.Hadoop2ClusterManager;
 import com.qubole.rubix.presto.PrestoClusterManager;
-import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.ClusterManager;
 import com.qubole.rubix.spi.ClusterType;
-import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import com.qubole.rubix.spi.thrift.FileInfo;
-import com.qubole.rubix.spi.thrift.Location;
 import com.qubole.rubix.spi.thrift.ReadResponse;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
@@ -50,12 +44,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
-import static org.testng.FileAssert.fail;
 
 /**
  * Created by Abhishek on 6/15/18.
@@ -500,71 +492,5 @@ public class TestBookKeeper
     long newSize = bookKeeper.getFileMetadata(TEST_REMOTE_PATH).getCurrentFileSize();
     assertTrue(newSize == size + 10 * CacheConfig.getBlockSize(conf),
             String.format("Expected size: %s but found %s", (size + 10) * CacheConfig.getBlockSize(conf), newSize));
-  }
-
-  @Test
-  void testReadWithInvalidation() throws IOException, TException, InterruptedException {
-    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
-    final int readOffset = 0;
-    final int readLength = 2000;
-    DataGen.populateFile(TEST_REMOTE_PATH);
-    CacheStatusRequest request = new CacheStatusRequest(remotePathWithScheme, TEST_FILE_LENGTH, TEST_LAST_MODIFIED,
-            0, 20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-    bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-    List<BlockLocation> blockLocations = bookKeeper.getCacheStatus(request).getBlocks();
-    for (BlockLocation location : blockLocations) {
-      if (location.getLocation() != Location.CACHED) {
-        fail();
-      }
-    }
-    Thread invalidateRequest = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        for (int i = 1; i < 15; i++)
-        {
-          bookKeeper.invalidateFileMetadata(remotePathWithScheme);
-          try {
-            Thread.sleep(1000);
-          } catch (InterruptedException e) {
-            e.printStackTrace();
-          }
-        }
-      }
-    });
-    Thread readrequest = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        for (int i = 1; i < 200; i++)
-        {
-          try {
-            ReadResponse response = bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-            Thread.sleep(100);
-            assertEquals(response.isStatus(), true);
-          }
-          catch (Exception e)
-          {
-            fail();
-          }
-        }
-      }
-    });
-    invalidateRequest.start();
-    readrequest.start();
-    readrequest.join();
-    invalidateRequest.join();
-  }
-
-  @Test
-  void testgenerationNumber() throws TException, IOException
-  {
-    final String remotePathWithScheme = "file://" + TEST_REMOTE_PATH;
-    final int readOffset = 0;
-    final int readLength = 2000;
-    DataGen.populateFile(TEST_REMOTE_PATH);
-    CacheStatusRequest request = new CacheStatusRequest(remotePathWithScheme, TEST_FILE_LENGTH, TEST_LAST_MODIFIED,
-            0, 20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-     bookKeeper.readData(remotePathWithScheme, readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
-     bookKeeper.invalidateFileMetadata(remotePathWithScheme);
-     assertEquals(bookKeeper.getCacheStatus(request).getGenerationNumber(), 1);
   }
 }

@@ -30,8 +30,11 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
+import static com.google.common.base.Preconditions.checkState;
+
 public class CacheUtil
 {
+  public static final int UNKONWN_GENERATION_NUMBER = 0;
   private static final Log log = LogFactory.getLog(CacheUtil.class.getName());
 
   private CacheUtil()
@@ -157,16 +160,9 @@ public class CacheUtil
    */
   public static String getLocalPath(String remotePath, Configuration conf, int generationNumber)
   {
+    checkState(generationNumber != UNKONWN_GENERATION_NUMBER, "generationNumber is " + UNKONWN_GENERATION_NUMBER);
     final String absLocation = getDirectory(remotePath, conf);
-    return String.format("%s/%s_g%s", absLocation, getName(remotePath), generationNumber);
-  }
-
-  public static String getRemotePath(String localPath, Configuration conf)
-  {
-    String cacheSuffix = CacheConfig.getCacheDataDirSuffix(conf);
-    int index = localPath.indexOf(cacheSuffix);
-    String remotePath = localPath.substring(index + cacheSuffix.length() - 1);
-    return remotePath;
+    return String.format("%s/%s_g%d", absLocation, getName(remotePath), generationNumber);
   }
 
   /**
@@ -179,8 +175,9 @@ public class CacheUtil
    */
   public static String getMetadataFilePath(String remotePath, Configuration conf, int generationNumber)
   {
+    checkState(generationNumber != UNKONWN_GENERATION_NUMBER, "generationNumber is " + UNKONWN_GENERATION_NUMBER);
     final String absLocation = getDirectory(remotePath, conf);
-    return String.format("%s/%s%s_g%s",absLocation, getName(remotePath), CacheConfig.getCacheMetadataFileSuffix(conf), generationNumber);
+    return String.format("%s/%s%s%d",absLocation, getName(remotePath), CacheConfig.getCacheMetadataFileSuffix(conf), generationNumber);
   }
 
   /**
@@ -192,7 +189,7 @@ public class CacheUtil
    */
   public static boolean isMetadataFile(String filePath, Configuration conf)
   {
-    return filePath.endsWith(CacheConfig.getCacheMetadataFileSuffix(conf));
+    return filePath.matches(".*" + CacheConfig.getCacheMetadataFileSuffix(conf) + "[0-9]+$");
   }
 
   /**

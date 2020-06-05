@@ -33,6 +33,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.Lock;
 
 import static com.qubole.rubix.spi.CacheConfig.getBlockSize;
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 
 /**
  * Created by stagra on 29/12/15.
@@ -62,7 +63,7 @@ public class FileMetadata
                       long currentFileSize,
                       Configuration conf,
                       Cache<String, Integer> generationNumberCache,
-                      BloomFilter filenameBloomFilter)
+                      BloomFilter fileAccessedBloomFilter)
           throws ExecutionException
   {
     this(remotePath,
@@ -70,7 +71,7 @@ public class FileMetadata
             lastModified,
             currentFileSize,
             conf,
-            findGenerationNumber(remotePath, conf, generationNumberCache, filenameBloomFilter));
+            findGenerationNumber(remotePath, conf, generationNumberCache, fileAccessedBloomFilter));
   }
 
 
@@ -101,22 +102,22 @@ public class FileMetadata
   private static int findGenerationNumber(String remotePath,
                                           Configuration conf,
                                           Cache<String, Integer> generationNumberCache,
-                                          BloomFilter filenameBloomFilter)
+                                          BloomFilter fileAccessedBloomFilter)
           throws ExecutionException
   {
     int genNumber;
     Closer oldFilesRemover = Closer.create();
 
-    if (!filenameBloomFilter.mightContain(remotePath)) {
+    if (!fileAccessedBloomFilter.mightContain(remotePath)) {
       // first access to the file since BKS started
 
       // Find the highest genNumber based on files on disk
-      int highestGenNumberOnDisk = 0;
+      int highestGenNumberOnDisk = UNKONWN_GENERATION_NUMBER + 1;
       while (new File(CacheUtil.getLocalPath(remotePath, conf, highestGenNumberOnDisk)).exists() ||
               new File(CacheUtil.getMetadataFilePath(remotePath, conf, highestGenNumberOnDisk)).exists()) {
         highestGenNumberOnDisk++;
       }
-      highestGenNumberOnDisk--;  // -1 => No file on disk
+      highestGenNumberOnDisk--;
 
       if (CacheConfig.isCleanupFilesDuringStartEnabled(conf)) {
         // Pick the generationNumber as one more than the highestGenNumberOnDisk
@@ -124,9 +125,9 @@ public class FileMetadata
         genNumber = highestGenNumberOnDisk + 1;
       }
       else {
-        // If no files exists for this path on disk then start with genNum=0
-        if (highestGenNumberOnDisk == -1) {
-          genNumber = 0;
+        // If no files exists for this path on disk then start with genNum = 1
+        if (highestGenNumberOnDisk == UNKONWN_GENERATION_NUMBER) {
+          genNumber = 1;
         }
         // If both datafile and mdfile exist for highestGenNumberOnDisk, use that as genNumber
         else if (new File(CacheUtil.getLocalPath(remotePath, conf, highestGenNumberOnDisk)).exists() &&
@@ -139,10 +140,10 @@ public class FileMetadata
           genNumber = highestGenNumberOnDisk + 1;
         }
       }
-      filenameBloomFilter.put(remotePath);
+      fileAccessedBloomFilter.put(remotePath);
     }
     else {
-      genNumber = generationNumberCache.get(remotePath, () -> -1) + 1;
+      genNumber = generationNumberCache.get(remotePath, () -> UNKONWN_GENERATION_NUMBER) + 1;
       while (new File(CacheUtil.getLocalPath(remotePath, conf, genNumber)).exists() ||
               new File(CacheUtil.getMetadataFilePath(remotePath, conf, genNumber)).exists()) {
         genNumber++;
@@ -161,7 +162,7 @@ public class FileMetadata
 
   private static void addFilesForDeletion(Closer fileRemover, int generationNumber, String remotePath, Configuration conf)
   {
-    for (int i = 0; i <= generationNumber; i++) {
+    for (int i = 1; i <= generationNumber; i++) {
       fileRemover.register(new File(CacheUtil.getLocalPath(remotePath, conf, i))::delete);
       fileRemover.register(new File(CacheUtil.getMetadataFilePath(remotePath, conf, i))::delete);
     }

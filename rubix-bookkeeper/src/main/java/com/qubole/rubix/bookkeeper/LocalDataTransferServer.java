@@ -51,6 +51,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 
 /**
  * Created by sakshia on 26/10/16.
@@ -209,7 +210,6 @@ public class LocalDataTransferServer extends Configured implements Tool
     SocketChannel localDataTransferClient;
     Configuration conf;
     BookKeeperFactory bookKeeperFactory;
-    int generationNumber;
 
     ClientServiceThread(SocketChannel s, Configuration conf, BookKeeperFactory bookKeeperFactory)
     {
@@ -235,6 +235,7 @@ public class LocalDataTransferServer extends Configured implements Tool
         int readLength = header.getReadLength();
         String remotePath = header.getFilePath();
         log.debug(String.format("Trying to read from %s at offset %d and length %d for client %s", remotePath, offset, readLength, localDataTransferClient.getRemoteAddress()));
+        int generationNumber = UNKONWN_GENERATION_NUMBER;
         try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf)) {
           if (!CacheConfig.isParallelWarmupEnabled(conf)) {
             ReadResponse response = bookKeeperClient.readData(remotePath, offset, readLength, header.getFileSize(),
@@ -269,7 +270,7 @@ public class LocalDataTransferServer extends Configured implements Tool
             }
           }
 
-          int nread = readDataFromCachedFile(bookKeeperClient, remotePath, offset, readLength);
+          int nread = readDataFromCachedFile(bookKeeperClient, remotePath, generationNumber, offset, readLength);
           log.debug(String.format("Done reading %d from %s at offset %d and length %d for client %s", nread, remotePath, offset, readLength, localDataTransferClient.getRemoteAddress()));
         }
       }
@@ -292,7 +293,7 @@ public class LocalDataTransferServer extends Configured implements Tool
       }
     }
 
-    private int readDataFromCachedFile(RetryingPooledBookkeeperClient bookKeeperClient, String remotePath, long offset, int readLength) throws IOException, TException
+    private int readDataFromCachedFile(RetryingPooledBookkeeperClient bookKeeperClient, String remotePath, int generationNumber, long offset, int readLength) throws IOException, TException
     {
       FileChannel fc = null;
       int nread = 0;

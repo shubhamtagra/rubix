@@ -54,6 +54,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -354,10 +355,10 @@ public class TestNonLocalReadRequestChain
   {
     stopAllServers();
 
-    File mdFile = new File(CacheUtil.getMetadataFilePath(backendPath.toString(), conf, 0));
+    File mdFile = new File(CacheUtil.getMetadataFilePath(backendPath.toString(), conf, UNKONWN_GENERATION_NUMBER + 1));
     mdFile.delete();
 
-    File localFile = new File(CacheUtil.getLocalPath(backendPath.toString(), conf, 0));
+    File localFile = new File(CacheUtil.getLocalPath(backendPath.toString(), conf, UNKONWN_GENERATION_NUMBER + 1));
     localFile.delete();
     backendFile.delete();
 
