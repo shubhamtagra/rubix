@@ -35,6 +35,8 @@ import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.SocketChannel;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.qubole.rubix.spi.CacheUtil.DUMMY_MODE_GENERATION_NUMBER;
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 
 /**
  * Created by sakshia on 31/8/16.
@@ -62,6 +64,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
                                   FileSystem remoteFileSystem, String remotePath, int clusterType,
                                   boolean strictMode, FileSystem.Statistics statistics)
   {
+    super(UNKONWN_GENERATION_NUMBER);
     this.remoteNodeName = remoteLocation;
     this.remoteFileSystem = remoteFileSystem;
     this.lastModified = lastModified;
@@ -201,7 +204,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
   }
 
   @Override
-  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf, int generationNumber)
+  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf)
   {
     if (CacheConfig.isDummyModeEnabled(conf)) {
       try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(remoteNodeName, conf)) {
@@ -211,7 +214,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
           // getCacheStatus() call required to create mdfiles before blocks are set as cached
           CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified, startBlock, endBlock).setClusterType(clusterType);
           bookKeeperClient.getCacheStatus(request);
-          bookKeeperClient.setAllCached(remotePath, fileSize, lastModified, startBlock, endBlock, generationNumber);
+          bookKeeperClient.setAllCached(remotePath, fileSize, lastModified, startBlock, endBlock, DUMMY_MODE_GENERATION_NUMBER);
         }
       }
       catch (Exception e) {

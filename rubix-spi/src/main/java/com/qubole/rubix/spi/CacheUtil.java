@@ -35,6 +35,7 @@ import static com.google.common.base.Preconditions.checkState;
 public class CacheUtil
 {
   public static final int UNKONWN_GENERATION_NUMBER = 0;
+  public static final int DUMMY_MODE_GENERATION_NUMBER = UNKONWN_GENERATION_NUMBER + 1;
   private static final Log log = LogFactory.getLog(CacheUtil.class.getName());
 
   private CacheUtil()

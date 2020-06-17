@@ -19,7 +19,6 @@ import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
-import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
 import com.qubole.rubix.spi.thrift.BlockLocation;
@@ -247,15 +246,13 @@ public class CachingInputStream extends FSInputStream
     final long endBlock = ((nextReadPosition + (length - 1)) / blockSize) + 1; // this block will not be read
 
     // Create read requests
-    ReadRequestChainWithGenerationNumber readRequestChainWithGenerationNumber = setupReadRequestChains(buffer,
+    final List<ReadRequestChain> readRequestChains = setupReadRequestChains(buffer,
         offset,
         endBlock,
         length,
         nextReadPosition,
         nextReadBlock);
 
-    final List<ReadRequestChain> readRequestChains = readRequestChainWithGenerationNumber.getReadRequestChains();
-    final int generationNumber = readRequestChainWithGenerationNumber.getGenerationNumber();
     log.debug("Executing Chains");
 
     // start read requests
@@ -287,7 +284,7 @@ public class CachingInputStream extends FSInputStream
       @Override
       public void run()
       {
-        updateCacheAndStats(readRequestChains, generationNumber);
+        updateCacheAndStats(readRequestChains);
       }
     });
 
@@ -300,17 +297,17 @@ public class CachingInputStream extends FSInputStream
     return sizeRead;
   }
 
-  void updateCacheAndStats(final List<ReadRequestChain> readRequestChains, int generationNumber)
+  void updateCacheAndStats(final List<ReadRequestChain> readRequestChains)
   {
     ReadRequestChainStats stats = new ReadRequestChainStats();
     for (ReadRequestChain readRequestChain : readRequestChains) {
-      readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf, generationNumber);
+      readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
       stats = stats.add(readRequestChain.getStats());
     }
     statsMbean.addReadRequestChainStats(stats);
   }
 
-  ReadRequestChainWithGenerationNumber setupReadRequestChains(byte[] buffer,
+  List<ReadRequestChain> setupReadRequestChains(byte[] buffer,
                                    int offset,
                                    long endBlock,
                                    int length,
@@ -442,9 +439,8 @@ public class CachingInputStream extends FSInputStream
             if (affixBuffer == null) {
               affixBuffer = new byte[blockSize];
             }
-            String localPath = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
             if (remoteReadRequestChain == null) {
-              remoteReadRequestChain = new RemoteReadRequestChain(getParentDataInputStream(), localPath, bufferPool, diskReadBufferSize, affixBuffer, bookKeeperFactory);
+              remoteReadRequestChain = new RemoteReadRequestChain(getParentDataInputStream(), remotePath, generationNumber, bufferPool, conf, affixBuffer, bookKeeperFactory);
             }
             remoteReadRequestChain.addReadRequest(readRequest);
           }
@@ -495,7 +491,7 @@ public class CachingInputStream extends FSInputStream
         }
       }
     }
-    return new ReadRequestChainWithGenerationNumber(chainedReadRequestChainBuilder.build(), generationNumber);
+    return chainedReadRequestChainBuilder.build();
   }
 
   private void setNextReadBlock()
@@ -513,23 +509,6 @@ public class CachingInputStream extends FSInputStream
     }
     catch (IOException e) {
       throw Throwables.propagate(e);
-    }
-  }
-
-  class ReadRequestChainWithGenerationNumber {
-    private ImmutableList ReadRequestChains;
-    private int generationNumber;
-    public ReadRequestChainWithGenerationNumber(ImmutableList ReadRequestChains, int generationNumber) {
-      this.ReadRequestChains = ReadRequestChains;
-      this.generationNumber = generationNumber;
-    }
-
-    public ImmutableList getReadRequestChains() {
-      return ReadRequestChains;
-    }
-
-    public int getGenerationNumber() {
-      return generationNumber;
     }
   }
 }

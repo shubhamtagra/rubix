@@ -33,6 +33,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.Lock;
 
 import static com.qubole.rubix.spi.CacheConfig.getBlockSize;
+import static com.qubole.rubix.spi.CacheUtil.DUMMY_MODE_GENERATION_NUMBER;
 import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 
 /**
@@ -58,29 +59,29 @@ public class FileMetadata
 
   // This constructor should not be called in parallel for same remotePath
   public FileMetadata(String remotePath,
-                      long fileLength,
-                      long lastModified,
-                      long currentFileSize,
-                      Configuration conf,
-                      Cache<String, Integer> generationNumberCache,
-                      BloomFilter fileAccessedBloomFilter)
-          throws ExecutionException
+      long fileLength,
+      long lastModified,
+      long currentFileSize,
+      Configuration conf,
+      Cache<String, Integer> generationNumberCache,
+      BloomFilter fileAccessedBloomFilter)
+      throws ExecutionException
   {
     this(remotePath,
-            fileLength,
-            lastModified,
-            currentFileSize,
-            conf,
-            findGenerationNumber(remotePath, conf, generationNumberCache, fileAccessedBloomFilter));
+        fileLength,
+        lastModified,
+        currentFileSize,
+        conf,
+        findGenerationNumber(remotePath, conf, generationNumberCache, fileAccessedBloomFilter));
   }
 
 
   public FileMetadata(String remotePath,
-                      long fileLength,
-                      long lastModified,
-                      long currentFileSize,
-                      Configuration conf,
-                      int generationNumber)
+      long fileLength,
+      long lastModified,
+      long currentFileSize,
+      Configuration conf,
+      int generationNumber)
   {
     this.remotePath = remotePath;
     this.size = fileLength;
@@ -100,11 +101,17 @@ public class FileMetadata
 
   // Should not be called in parallel for the same remotePath
   private static int findGenerationNumber(String remotePath,
-                                          Configuration conf,
-                                          Cache<String, Integer> generationNumberCache,
-                                          BloomFilter fileAccessedBloomFilter)
-          throws ExecutionException
+      Configuration conf,
+      Cache<String, Integer> generationNumberCache,
+      BloomFilter fileAccessedBloomFilter)
+      throws ExecutionException
   {
+    // For Dummy-Mode, stay at fixed generationNumber to avoid complications of fetching generation number
+    // in updateCacheStatus calls of NonLocalReads
+    if (CacheConfig.isDummyModeEnabled(conf)) {
+      return DUMMY_MODE_GENERATION_NUMBER;
+    }
+
     int genNumber;
     Closer oldFilesRemover = Closer.create();
 
@@ -118,7 +125,6 @@ public class FileMetadata
         highestGenNumberOnDisk++;
       }
       highestGenNumberOnDisk--;
-
       if (CacheConfig.isCleanupFilesDuringStartEnabled(conf)) {
         // Pick the generationNumber as one more than the highestGenNumberOnDisk
         addFilesForDeletion(oldFilesRemover, highestGenNumberOnDisk, remotePath, conf);

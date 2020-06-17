@@ -55,10 +55,17 @@ public class FileDownloadRequestChain extends ReadRequestChain
 
   private static final Log log = LogFactory.getLog(FileDownloadRequestChain.class);
 
-  public FileDownloadRequestChain(BookKeeper bookKeeper, FileSystem remoteFileSystem, String localfile,
-                                  ByteBuffer directBuffer, Configuration conf, String remotePath,
-                                  long fileSize, long lastModified, int generationNumber)
+  public FileDownloadRequestChain(BookKeeper bookKeeper,
+      FileSystem remoteFileSystem,
+      String localfile,
+      ByteBuffer directBuffer,
+      Configuration conf,
+      String remotePath,
+      long fileSize,
+      long lastModified,
+      int generationNumber)
   {
+    super(generationNumber);
     this.bookKeeper = bookKeeper;
     this.remoteFileSystem = remoteFileSystem;
     this.localFile = localfile;
@@ -205,7 +212,7 @@ public class FileDownloadRequestChain extends ReadRequestChain
   }
 
   @Override
-  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf, int generationNumber)
+  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf)
   {
     try {
       for (ReadRequest readRequest : getReadRequests()) {
@@ -227,10 +234,5 @@ public class FileDownloadRequestChain extends ReadRequestChain
         .setRequestedRead(totalRequestedRead)
         .setWarmupPenalty(warmupPenalty)
         .setRemoteReads(requests);
-  }
-
-  public int getGenerationNumber()
-  {
-    return generationNumber;
   }
 }

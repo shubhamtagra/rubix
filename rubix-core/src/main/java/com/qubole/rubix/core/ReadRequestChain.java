@@ -38,15 +38,17 @@ public abstract class ReadRequestChain implements Callable<Long>
   ReadRequest lastRequest;
   boolean isLocked;
   boolean cancelled;
+  private final int generationNumber;
 
   protected String threadName;
   protected long requests;
 
   private static final Log log = LogFactory.getLog(ReadRequestChain.class);
 
-  public ReadRequestChain()
+  public ReadRequestChain(int generationNumber)
   {
     super();
+    this.generationNumber = generationNumber;
     this.threadName = Thread.currentThread().getName();
   }
 
@@ -95,7 +97,7 @@ public abstract class ReadRequestChain implements Callable<Long>
   /*
    * This method is used called to update the cache status after read has been done
    */
-  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf, int generationNumber)
+  public void updateCacheStatus(String remotePath, long fileSize, long lastModified, int blockSize, Configuration conf)
   {
     // no-op by default
   }

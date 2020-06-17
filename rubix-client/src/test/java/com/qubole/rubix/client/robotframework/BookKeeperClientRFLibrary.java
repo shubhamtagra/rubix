@@ -154,12 +154,12 @@ public class BookKeeperClientRFLibrary
   {
     try (RetryingPooledBookkeeperClient client = createBookKeeperClient()) {
       return client.getCacheStatus(new CacheStatusRequest(
-              getPathWithFileScheme(request.getRemotePath()),
-              request.getFileLength(),
-              request.getLastModified(),
-              request.getStartBlock(),
-              request.getEndBlock()).setClusterType(request.getClusterType()))
-              .getBlocks();
+          getPathWithFileScheme(request.getRemotePath()),
+          request.getFileLength(),
+          request.getLastModified(),
+          request.getStartBlock(),
+          request.getEndBlock()).setClusterType(request.getClusterType()))
+          .getBlocks();
     }
   }
 

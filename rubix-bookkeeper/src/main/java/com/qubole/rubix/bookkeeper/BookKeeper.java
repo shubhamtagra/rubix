@@ -479,7 +479,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
         replaceFileMetadata(remotePath, currentFileSize, conf);
       }
     }
-    catch (IOException | ExecutionException e) {
+    catch (IOException e) {
       throw new TException(e);
     }
   }
@@ -551,8 +551,12 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     }
   }
 
-  private ReadResponse readDataInternal(String remotePath, long offset, int length, long fileSize,
-                                   long lastModified, int clusterType) throws TException
+  private ReadResponse readDataInternal(String remotePath,
+      long offset,
+      int length,
+      long fileSize,
+      long lastModified,
+      int clusterType) throws TException
   {
     int blockSize = CacheConfig.getBlockSize(conf);
     byte[] buffer = new byte[blockSize];
@@ -567,7 +571,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified, startBlock, endBlock).setClusterType(clusterType);
       response = getCacheStatus(request);
       List<BlockLocation> blockLocations = response.getBlocks();
-      String localPath = CacheUtil.getLocalPath(remotePath, conf, response.getGenerationNumber());
 
       for (long blockNum = startBlock; blockNum < endBlock; blockNum++, idx++) {
         long readStart = blockNum * blockSize;
@@ -584,7 +587,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
           // Ue RRRC directly instead of creating instance of CachingFS as in certain circumstances, CachingFS could
           // send this request to NonLocalRRC which would be wrong as that would not cache it on disk
           long expectedBytesToRead = (readStart + blockSize) > fileSize ? (fileSize - readStart) : blockSize;
-          RemoteReadRequestChain remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath, bufferPool, CacheConfig.getDiskReadBufferSize(conf), buffer, new BookKeeperFactory(this));
+          RemoteReadRequestChain remoteReadRequestChain = new RemoteReadRequestChain(inputStream, remotePath, response.getGenerationNumber(), bufferPool, conf, buffer, new BookKeeperFactory(this));
           remoteReadRequestChain.addReadRequest(new ReadRequest(readStart, readStart + expectedBytesToRead, readStart, readStart + expectedBytesToRead, buffer, 0, fileSize));
           remoteReadRequestChain.lock();
           long dataRead = remoteReadRequestChain.call();
@@ -592,7 +595,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
           // the download this time. So won't update the cache metadata and return false so that client can
           // fall back on the directread
           if (dataRead == expectedBytesToRead) {
-            remoteReadRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf, response.getGenerationNumber());
+            remoteReadRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
           }
           else {
             log.error("Not able to download requested bytes. Not updating the cache for block " + blockNum);
@@ -767,12 +770,12 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     BloomFilter fileAccessedBloomFilter;
 
     public CreateFileMetadataCallable(String path,
-                                      long fileLength,
-                                      long lastModified,
-                                      long currentFileSize,
-                                      Configuration conf,
-                                      Cache<String, Integer> generationNumberCache,
-                                      BloomFilter fileAccessedBloomFilter)
+        long fileLength,
+        long lastModified,
+        long currentFileSize,
+        Configuration conf,
+        Cache<String, Integer> generationNumberCache,
+        BloomFilter fileAccessedBloomFilter)
     {
       this.path = path;
       this.conf = conf;
@@ -804,7 +807,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     }
   }
 
-  private void replaceFileMetadata(String key, long currentFileSize, Configuration conf) throws IOException, ExecutionException
+  private void replaceFileMetadata(String key, long currentFileSize, Configuration conf)
   {
     if (fileMetadataCache != null) {
       FileMetadata metadata = fileMetadataCache.getIfPresent(key);

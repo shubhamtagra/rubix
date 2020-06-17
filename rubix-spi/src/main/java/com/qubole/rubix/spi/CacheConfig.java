@@ -825,6 +825,11 @@ public class CacheConfig
     conf.setInt(KEY_POOL_MAX_SIZE, count);
   }
 
+  public static void setDiskReadBufferSize(Configuration conf, int bufferSize)
+  {
+    conf.setInt(KEY_DISK_READ_BUFFER_SIZE, bufferSize);
+  }
+
   public static Configuration disableFSCaches(Configuration conf)
   {
     List<String> fsSchemes = ImmutableList.of("s3", "s3a", "s3n", "wasb", "wasbs", "abfs", "abfss", "gs", "hdfs");

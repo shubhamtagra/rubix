@@ -88,10 +88,13 @@ public class DummyModeCachingInputStream extends CachingInputStream
       {
         try {
           long endBlock = ((initPos + (length - 1)) / blockSize) + 1;
-          ReadRequestChainWithGenerationNumber readRequestChainWithGenerationNumber = setupReadRequestChains(buffer, offset, endBlock, length,
-              initPos, initNextReadBlock);
-          final List<ReadRequestChain> readRequestChains = readRequestChainWithGenerationNumber.getReadRequestChains();
-          updateCacheAndStats(readRequestChains, readRequestChainWithGenerationNumber.getGenerationNumber());
+          final List<ReadRequestChain> readRequestChains = setupReadRequestChains(buffer,
+              offset,
+              endBlock,
+              length,
+              initPos,
+              initNextReadBlock);
+          updateCacheAndStats(readRequestChains);
         }
         catch (IOException e) {
           throw Throwables.propagate(e);

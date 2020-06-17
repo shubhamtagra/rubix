@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 
 /**
  * Created by stagra on 4/1/16.
@@ -53,10 +54,16 @@ public class CachedReadRequestChain extends ReadRequestChain
 
   private static final Log log = LogFactory.getLog(CachedReadRequestChain.class);
 
-  public CachedReadRequestChain(FileSystem remoteFileSystem, String remotePath, DirectBufferPool bufferPool, int directBufferSize,
-                                FileSystem.Statistics statistics, Configuration conf, BookKeeperFactory factory,
-                                int generationNumber)
+  public CachedReadRequestChain(FileSystem remoteFileSystem,
+      String remotePath,
+      DirectBufferPool bufferPool,
+      int directBufferSize,
+      FileSystem.Statistics statistics,
+      Configuration conf,
+      BookKeeperFactory factory,
+      int generationNumber)
   {
+    super(generationNumber);
     this.conf = conf;
     this.remotePath = remotePath;
     this.remoteFileSystem = remoteFileSystem;
@@ -77,6 +84,7 @@ public class CachedReadRequestChain extends ReadRequestChain
   public CachedReadRequestChain()
   {
     //Dummy constructor for testing #testConsequtiveRequest method.
+    super(UNKONWN_GENERATION_NUMBER);
   }
 
   public Long call() throws IOException

@@ -47,7 +47,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 
-import static com.google.common.base.Preconditions.checkState;
 import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
 import static com.qubole.rubix.spi.CommonUtilities.toBlockStartPosition;
 import static com.qubole.rubix.spi.CommonUtilities.toEndBlock;
@@ -218,7 +217,7 @@ class FileDownloader
         // metadata gets updated for all the requested blocks.
         if (read == totalBytesToBeDownloaded) {
           requestChain.updateCacheStatus(requestChain.getRemotePath(), requestChain.getFileSize(),
-              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf, requestChain.getGenerationNumber());
+              requestChain.getLastModified(), CacheConfig.getBlockSize(conf), conf);
           sizeRead += read;
           this.totalTimeToDownload.inc(requestChain.getTimeSpentOnDownload());
         }
