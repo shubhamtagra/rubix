@@ -28,12 +28,8 @@ import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.ClusterType;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
-import com.qubole.rubix.spi.thrift.BlockLocation;
 import com.qubole.rubix.spi.thrift.CacheStatusRequest;
 import com.qubole.rubix.spi.thrift.CacheStatusResponse;
-import com.qubole.rubix.spi.thrift.FileInfo;
-import com.qubole.rubix.spi.thrift.Location;
-import com.qubole.rubix.spi.thrift.ReadResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -56,12 +52,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiFunction;
 
 import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 public class TestGenerationNumber
@@ -82,7 +80,6 @@ public class TestGenerationNumber
   private BookKeeperFactory bookKeeperFactory;
 
   MockCachingFileSystem fs;
-  CachingInputStream inputStream;
   final Configuration conf = new Configuration();
 
   @BeforeClass
@@ -121,8 +118,6 @@ public class TestGenerationNumber
     // Populate File
     DataGen.populateFile(backendFileName);
     backendFile = new File(backendFileName);
-    inputStream = createCachingStream(conf);
-    log.info("BackendPath: " + backendPath);
   }
 
   private CachingInputStream createCachingStream(Configuration conf)
@@ -148,7 +143,7 @@ public class TestGenerationNumber
   void testReadWithInvalidationsWithoutParalleWarmUp()
       throws Exception
   {
-    testReadWithInvalidationHelper();
+    testReadWithInvalidationHelper(getLocalCacheReader(conf));
   }
 
   /**
@@ -162,70 +157,7 @@ public class TestGenerationNumber
     CacheConfig.setIsParallelWarmupEnabled(conf, true);
     CacheConfig.setRemoteFetchProcessInterval(conf, 500);
     restartServer();
-    testReadWithInvalidationHelper();
-  }
-
-  void testReadWithInvalidationHelper()
-      throws Exception
-  {
-    int maxReadTasks  = 200;
-    final RetryingPooledBookkeeperClient client = getBookKeeperClient();
-    Thread invalidateRequest = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        for (int i = 1; i < 100; i++)
-        {
-          try {
-            client.invalidateFileMetadata(backendPath.toString());
-            Thread.sleep(500);
-          } catch (Exception e) {
-            throw new RuntimeException(e);
-          }
-        }
-      }
-    });
-
-    ExecutorService service = Executors.newFixedThreadPool(20);
-    List<Future> readtasks = new ArrayList<>();
-    // submit the read task for execution
-    for(int id = 0; id < maxReadTasks; id++)
-    {
-      int readLength = new Random().nextInt(2000);
-      readtasks.add(service.submit(new ReadTask(readLength, createCachingStream(conf))));
-    }
-    invalidateRequest.start();
-      for (int id = 0; id < maxReadTasks; id++) {
-        Future<Data> result = readtasks.get(id);
-        Data data = result.get();
-        assertions(data.getReadSize(), data.getexpectedReadSize(), data.getBuffer());
-      }
-      invalidateRequest.join();
-  }
-
-  class ReadTask implements Callable<Data>
-  {
-    CachingInputStream inputStream;
-    int readLength;
-    ReadTask(int readLength, CachingInputStream inputStream)
-    {
-      this.readLength = readLength;
-      this.inputStream = inputStream;
-    }
-    @Override
-    public Data call()
-    {
-      try {
-        byte[] buffer = new byte[readLength];
-        inputStream.seek(0);
-        int readSize = inputStream.read(buffer, 0, readLength);
-        Thread.sleep(2000);
-        return new Data(buffer, readSize, readLength);
-      }
-      catch (Exception e)
-      {
-        throw new RuntimeException(e);
-      }
-    }
+    testReadWithInvalidationHelper(getLocalCacheReader(conf));
   }
 
   /**
@@ -236,7 +168,8 @@ public class TestGenerationNumber
   void testNonLocalReadWithInvalidationsWithoutParalleWarmUp()
       throws Exception
   {
-    testNonLocalReadWithInvalidationHelper();
+    startLDS();
+    testReadWithInvalidationHelper(getNonLocalCacheReader(conf));
   }
 
   /**
@@ -247,14 +180,15 @@ public class TestGenerationNumber
   void testNonLocalReadWithInvalidationsWithParallelWarmUp()
       throws Exception
   {
+    startLDS();
     CacheConfig.setIsParallelWarmupEnabled(conf, true);
     CacheConfig.setRemoteFetchProcessInterval(conf, 500);
     restartServer();
-    testNonLocalReadWithInvalidationHelper();
+    testReadWithInvalidationHelper(getNonLocalCacheReader(conf));
   }
 
-  void testNonLocalReadWithInvalidationHelper()
-      throws Exception
+  private void startLDS()
+      throws InterruptedException
   {
     Thread localDataTransferServer;
     localDataTransferServer = new Thread()
@@ -269,69 +203,103 @@ public class TestGenerationNumber
       Thread.sleep(200);
       log.info("Waiting for Local Data Transfer Server to come up");
     }
-
-    int maxNonLocalReadTasks  = 100;
-    final RetryingPooledBookkeeperClient client = getBookKeeperClient();
-    Thread invalidateRequest = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        for (int i = 1; i < 50; i++)
-        {
-          try {
-            client.invalidateFileMetadata(backendPath.toString());
-            Thread.sleep(500);
-          } catch (Exception e) {
-            throw new RuntimeException(e);
-          }
-        }
-      }
-    });
-    ExecutorService service = Executors.newFixedThreadPool(20);
-    List<Future> NonLocalreadtasks = new ArrayList<>();
-
-    // submit the read task for execution
-    for(int id = 0; id < maxNonLocalReadTasks; id++)
-    {
-      int readLength = new Random().nextInt(100);
-      NonLocalreadtasks.add(service.submit(new NonLocalReadTask(createNewNonLocalReadRequest(), readLength)));
-    }
-    invalidateRequest.start();
-    for (int id = 0; id < maxNonLocalReadTasks; id++) {
-      Future<Data> result = NonLocalreadtasks.get(id);
-      Data data = result.get();
-      assertions(data.getReadSize(), data.getexpectedReadSize(), data.getBuffer());
-      }
-      invalidateRequest.join();
   }
 
-  private NonLocalReadRequestChain createNewNonLocalReadRequest()
-      throws IOException
+  private BiFunction<byte[], Integer, Integer> getLocalCacheReader(Configuration conf)
   {
-    NonLocalReadRequestChain requestChain = new NonLocalReadRequestChain("localhost", backendFile.length(),
-        backendFile.lastModified(), conf, fs.getRemoteFileSystem(), backendPath.toString(),
-        ClusterType.TEST_CLUSTER_MANAGER.ordinal(), false, null);
-    return requestChain;
+    return (buffer, readLen) -> {
+      try {
+        return createCachingStream(conf).read(buffer, 0, readLen);
+      }
+      catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    };
   }
 
-  class NonLocalReadTask implements Callable<Data>
+  private BiFunction<byte[], Integer, Integer> getNonLocalCacheReader(Configuration conf)
   {
-    NonLocalReadRequestChain requestChain;
-    int readLength;
-    NonLocalReadTask(NonLocalReadRequestChain requestChain, int readLength)
+    return (buffer, readLength) ->
     {
-      this.requestChain = requestChain;
-      this.readLength = readLength;
-    }
-    @Override
-    public Data call() throws Exception
-    {
-      byte[] buffer = new byte[readLength];
+      NonLocalReadRequestChain requestChain = new NonLocalReadRequestChain("localhost", backendFile.length(),
+          backendFile.lastModified(), conf, fs.getRemoteFileSystem(), backendPath.toString(),
+          ClusterType.TEST_CLUSTER_MANAGER.ordinal(), false, null);
+
       ReadRequest readRequest = new ReadRequest(0, 100, 0, readLength, buffer, 0, backendFile.length());
       requestChain.addReadRequest(readRequest);
       requestChain.lock();
-      int readSize = Math.toIntExact(requestChain.call());
-      Thread.sleep(2000);
-      return new Data(buffer, readSize, readLength);
+      try {
+        return Math.toIntExact(requestChain.call());
+      }
+      catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    };
+  }
+
+  void testReadWithInvalidationHelper(BiFunction<byte[], Integer, Integer> reader)
+      throws Exception
+  {
+    int maxReadTasks  = 200;
+    final RetryingPooledBookkeeperClient client = getBookKeeperClient();
+    AtomicBoolean testDone = new AtomicBoolean();
+    Thread invalidateRequest = new Thread(() -> {
+      for (int i = 1; i < 100; i++)
+      {
+        try {
+          if (testDone.get()) {
+            return;
+          }
+          client.invalidateFileMetadata(backendPath.toString());
+          Thread.sleep(500);
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }
+    });
+
+    ExecutorService service = Executors.newFixedThreadPool(20);
+    List<Future> readtasks = new ArrayList<>();
+    // submit the read task for execution
+    for(int id = 0; id < maxReadTasks; id++)
+    {
+      int readLength = new Random().nextInt(100);
+      readtasks.add(service.submit(new ReadCallable(readLength, reader)));
+    }
+    invalidateRequest.start();
+    for (int id = 0; id < maxReadTasks; id++) {
+      Future<Data> result = readtasks.get(id);
+      Data data = result.get();
+      assertions(data.getReadSize(), data.getexpectedReadSize(), data.getBuffer());
+    }
+    testDone.set(true);
+    invalidateRequest.join();
+  }
+
+  class ReadCallable implements Callable<Data>
+  {
+    int readLength;
+    BiFunction<byte[], Integer, Integer> reader;
+
+    ReadCallable(int readLength, BiFunction<byte[], Integer, Integer> reader)
+    {
+      this.readLength = readLength;
+      this.reader = reader;
+    }
+
+    @Override
+    public Data call()
+    {
+      try {
+        byte[] buffer = new byte[readLength];
+        int readSize = reader.apply(buffer, readLength);
+        Thread.sleep(2000);
+        return new Data(buffer, readSize, readLength);
+      }
+      catch (Exception e)
+      {
+        throw new RuntimeException(e);
+      }
     }
   }
 
@@ -368,10 +336,11 @@ public class TestGenerationNumber
    */
   @Test
   void testGenerationNumberIncrement()
-      throws TException, IOException
+      throws Exception
   {
     RetryingPooledBookkeeperClient client = getBookKeeperClient();
-    final int readOffset = 0, readLength = 2000;
+    int readOffset = 0;
+    int readLength = 2000;
     client.readData(backendPath.toString(), readOffset, readLength, TEST_FILE_LENGTH, TEST_LAST_MODIFIED, ClusterType.TEST_CLUSTER_MANAGER.ordinal());
     client.invalidateFileMetadata(backendPath.toString());
     CacheStatusRequest request = new CacheStatusRequest(backendPath.toString(),
@@ -380,9 +349,7 @@ public class TestGenerationNumber
         0,
         20).setClusterType(ClusterType.TEST_CLUSTER_MANAGER.ordinal());
     int generationNumber = client.getCacheStatus(request).getGenerationNumber();
-    assertTrue(generationNumber == UNKONWN_GENERATION_NUMBER + 2,
-        "generation number is reported: " + generationNumber +
-        "but expected: " + (UNKONWN_GENERATION_NUMBER + 2));
+    assertEquals(generationNumber, UNKONWN_GENERATION_NUMBER + 2, "Invalid generation number");
   }
 
   /**
@@ -420,17 +387,13 @@ public class TestGenerationNumber
     if (!misssingFileOrCleanUpRequired)
     {
       // Both datafile and mdfile exists with generationNumber on disk so we should get generationNumber in response
-      assertTrue(response.getGenerationNumber() == generationNumber,
-          "generation Number is reported:" + response.getGenerationNumber() +
-              "but expected: " + generationNumber);
+      assertEquals(response.getGenerationNumber(), generationNumber, "Unexpected generation number");
     }
     else
     {
       // datafile exists with generationNumber on disk but without mdFile or cleanup required
       // we should get generationNumber + 1 in response
-      assertTrue(response.getGenerationNumber() == generationNumber + 1,
-          "generation number is reported: " + response.getGenerationNumber() +
-              " but expected: " + (generationNumber + 1) );
+      assertEquals(response.getGenerationNumber(), generationNumber + 1, "Unexpected generation number");
     }
   }
 
@@ -453,9 +416,7 @@ public class TestGenerationNumber
     // create files till generation Number = 5
     creatLocalFilesOnCache(generationNumber);
     CacheStatusResponse response = client.getCacheStatus(request);
-    assertTrue(response.getGenerationNumber() == generationNumber + 1,
-        "generation Number is reported:" + response.getGenerationNumber() +
-            "but expected: " + (generationNumber + 1));
+    assertEquals(response.getGenerationNumber(), generationNumber + 1, "Unexpected generation number");
   }
 
   RetryingPooledBookkeeperClient getBookKeeperClient()
