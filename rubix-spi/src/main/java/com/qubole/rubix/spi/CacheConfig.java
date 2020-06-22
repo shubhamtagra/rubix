@@ -829,13 +829,4 @@ public class CacheConfig
   {
     conf.setInt(KEY_DISK_READ_BUFFER_SIZE, bufferSize);
   }
-
-  public static Configuration disableFSCaches(Configuration conf)
-  {
-    List<String> fsSchemes = ImmutableList.of("s3", "s3a", "s3n", "wasb", "wasbs", "abfs", "abfss", "gs", "hdfs");
-    for (String scheme : fsSchemes) {
-      conf.setBoolean(String.format("fs.%s.impl.disable.cache", scheme), true);
-    }
-    return conf;
-  }
 }

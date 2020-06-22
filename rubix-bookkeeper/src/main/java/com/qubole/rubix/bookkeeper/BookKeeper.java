@@ -613,7 +613,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       if (inputStream != null) {
         try {
           inputStream.close();
-          fs.close();
         }
         catch (IOException e) {
           log.error("Error closing inputStream", e);
@@ -654,8 +653,13 @@ public abstract class BookKeeper implements BookKeeperService.Iface
 
     CacheUtil.createCacheDirectories(conf);
 
+    int cacheDiskCount = CacheUtil.getCacheDiskCount(conf);
+    if (cacheDiskCount == 0) {
+      throw new IllegalStateException("No disks available for caching");
+    }
+
     long avail = 0;
-    for (int d = 0; d < CacheUtil.getCacheDiskCount(conf); d++) {
+    for (int d = 0; d < cacheDiskCount; d++) {
       avail += new File(CacheUtil.getDirPath(d, conf)).getUsableSpace();
     }
     avail = DiskUtils.bytesToMB(avail);
