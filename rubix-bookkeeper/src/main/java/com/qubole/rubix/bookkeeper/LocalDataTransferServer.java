@@ -206,46 +206,43 @@ public class LocalDataTransferServer extends Configured implements Tool
     SocketChannel localDataTransferClient;
     Configuration conf;
     BookKeeperFactory bookKeeperFactory;
+    String remoteNode;
 
     ClientServiceThread(SocketChannel s, Configuration conf, BookKeeperFactory bookKeeperFactory)
+            throws IOException
     {
       localDataTransferClient = s;
       this.conf = conf;
       this.bookKeeperFactory = bookKeeperFactory;
+      this.remoteNode = s.getRemoteAddress().toString();
     }
 
     public void run()
     {
       try {
-        log.debug("Connected to node - " + localDataTransferClient.getLocalAddress());
+        log.debug("Connected to node " + remoteNode);
 
         while (localDataTransferClient.isConnected()) {
 
           ByteBuffer dataInfo = ByteBuffer.allocate(CacheConfig.getMaxHeaderSize(conf));
 
-          try {
-            int read = localDataTransferClient.read(dataInfo);
-            if (read == -1) {
-              throw new Exception("Could not read data from Non-local node");
-            }
+          int read = localDataTransferClient.read(dataInfo);
+          if (read == -1) {
+            throw new IOException("Could not read data from node " + remoteNode);
           }
-          catch (IOException e)
-          {
-            // Assume the client died and continue silently
-            log.debug("Connection closed by scavenger: ", e);
-          }
+
           dataInfo.flip();
 
           DataTransferHeader header = DataTransferClientHelper.readHeaders(dataInfo);
           long offset = header.getOffset();
           int readLength = header.getReadLength();
           String remotePath = header.getFilePath();
-          log.info(String.format("Trying to read from %s at offset %d and length %d for client %s", remotePath, offset, readLength, localDataTransferClient.getRemoteAddress()));
+          log.debug(String.format("Trying to read from %s at offset %d and length %d for client %s", remotePath, offset, readLength, remoteNode));
           try (RetryingPooledBookkeeperClient bookKeeperClient = bookKeeperFactory.createBookKeeperClient(conf)) {
             if (!CacheConfig.isParallelWarmupEnabled(conf)) {
               if (!bookKeeperClient.readData(remotePath, offset, readLength, header.getFileSize(),
                       header.getLastModified(), header.getClusterType())) {
-                throw new Exception("Could not cache data required by non-local node");
+                throw new IOException("Could not cache data required by node " + remoteNode);
               }
             }
             else {
@@ -263,33 +260,26 @@ public class LocalDataTransferServer extends Configured implements Tool
               long blockNum = startBlock;
               for (BlockLocation location : blockLocations) {
                 if (location.getLocation() != Location.CACHED) {
-                  log.error(String.format("The requested data for block %d of file %s in not in cache. " +
+                  throw new IOException(String.format("The requested data for block %d of file %s in not in cache. " +
                           " The data will be read from object store", blockNum, remotePath));
-                  throw new Exception("The requested data in not in cache. The data will be read from object store");
                 }
               }
               blockNum++;
             }
             int nread = readDataFromCachedFile(bookKeeperClient, remotePath, offset, readLength);
-            log.info(String.format("Done reading %d from %s at offset %d and length %d for client %s", nread, remotePath, offset, readLength, localDataTransferClient.getRemoteAddress()));
+            log.debug(String.format("Done reading %d from %s at offset %d and length %d for client %s", nread, remotePath, offset, readLength, remoteNode));
           }
         }
       }
       catch (Exception e) {
-        try {
-          log.warn("Error in Local Data Transfer Server for client: " + localDataTransferClient.getRemoteAddress(), e);
-        }
-        catch (IOException e1) {
-          log.warn("Error in Local Data Transfer Server for client: ", e);
-        }
-        return;
+        log.info("Closing socket for node " + remoteNode, e);
       }
       finally {
         try {
           localDataTransferClient.close();
         }
         catch (IOException e) {
-          log.warn("Error in Local Data Transfer Server: ", e);
+          log.warn("Error closing socket for node " + remoteNode, e);
         }
       }
     }

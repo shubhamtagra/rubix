@@ -95,7 +95,8 @@ public class NonLocalReadRequestChain extends ReadRequestChain
       if (cancelled) {
         propagateCancel(this.getClass().getName());
       }
-      try (DataTransferClient dataTransferClient = getClient(remoteNodeName, conf)) {
+      DataTransferClient dataTransferClient = getClient(remoteNodeName, conf);
+      try {
         int nread = 0;
         /*
         SocketChannels does not support timeouts when used directly, because timeout is used only by streams.
@@ -108,25 +109,11 @@ public class NonLocalReadRequestChain extends ReadRequestChain
         ByteBuffer buf = DataTransferClientHelper.writeHeaders(conf, new DataTransferHeader(readRequest.getActualReadStart(),
             readRequest.getActualReadLengthIntUnsafe(), fileSize, lastModified, clusterType, filePath));
 
-        try {
-          dataTransferClient.getSocketChannel().write(buf);
-        }
-        catch (IOException e) {
-          log.warn("Error in writing..closing socket channel: " + dataTransferClient.getSocketChannel(), e);
-          dataTransferClient.getSocketChannel().close();
-          throw e;
-        }
+        dataTransferClient.getSocketChannel().write(buf);
         int bytesread = 0;
         ByteBuffer dst = ByteBuffer.wrap(readRequest.destBuffer, readRequest.getDestBufferOffset(), readRequest.destBuffer.length - readRequest.getDestBufferOffset());
         while (bytesread != readRequest.getActualReadLengthIntUnsafe()) {
-          try {
-            nread = wrappedChannel.read(dst);
-          }
-          catch (IOException e) {
-            log.warn("Error in reading..closing socket channel: " + dataTransferClient.getSocketChannel(), e);
-            dataTransferClient.getSocketChannel().close();
-            throw e;
-          }
+          nread = wrappedChannel.read(dst);
           bytesread += nread;
           totalRead += nread;
           if (nread == -1) {
@@ -137,6 +124,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
         }
       }
       catch (Exception e) {
+        dataTransferClient.getSocketChannel().close();
         if (strictMode) {
           log.warn("Error reading data from node : " + remoteNodeName, e);
           throw Throwables.propagate(e);
@@ -147,6 +135,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
         }
       }
       finally {
+        dataTransferClient.close();
         log.debug(String.format("Read %d bytes internally from node %s", totalRead, remoteNodeName));
         if (statistics != null) {
           statistics.incrementBytesRead(totalRead);
