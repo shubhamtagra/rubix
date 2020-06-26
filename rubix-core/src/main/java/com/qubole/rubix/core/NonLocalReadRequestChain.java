@@ -112,6 +112,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
           return directReadRequest(readRequests.indexOf(readRequest));
         }
       }
+      int bytesread = 0;
       try {
         int nread = 0;
 
@@ -127,20 +128,19 @@ public class NonLocalReadRequestChain extends ReadRequestChain
             readRequest.getActualReadLengthIntUnsafe(), fileSize, lastModified, clusterType, filePath));
 
         dataTransferClient.write(buf);
-        int bytesread = 0;
         ByteBuffer dst = ByteBuffer.wrap(readRequest.destBuffer, readRequest.getDestBufferOffset(), readRequest.destBuffer.length - readRequest.getDestBufferOffset());
         while (bytesread != readRequest.getActualReadLengthIntUnsafe()) {
           nread = wrappedChannel.read(dst);
           bytesread += nread;
           totalRead += nread;
           if (nread == -1) {
-            totalRead -= bytesread;
             throw new Exception("Error reading from Local Transfer Server");
           }
           dst.position(bytesread + readRequest.getDestBufferOffset());
         }
       }
       catch (SocketTimeoutException e) {
+        totalRead -= bytesread;
         if (strictMode) {
           log.error(remoteNodeName + ": socket read timed out.", e);
           throw Throwables.propagate(e);
@@ -151,6 +151,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
         }
       }
       catch (Exception e) {
+        totalRead -= bytesread;
         log.warn("Error reading data from node : " + remoteNodeName, e);
         if (strictMode) {
           throw Throwables.propagate(e);
