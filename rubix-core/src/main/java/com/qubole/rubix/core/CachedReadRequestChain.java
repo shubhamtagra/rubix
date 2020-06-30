@@ -16,6 +16,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.RetryingPooledBookkeeperClient;
+import com.qubole.rubix.spi.thrift.CacheStatusRequest;
+import com.qubole.rubix.spi.thrift.CacheStatusResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -51,6 +53,9 @@ public class CachedReadRequestChain extends ReadRequestChain
   private int directBufferSize;
   private int corruptedFileCount;
   private int generationNumber;
+  private long fileSize;
+  private long lastModified;
+  private int clusterType;
 
   private static final Log log = LogFactory.getLog(CachedReadRequestChain.class);
 
@@ -61,7 +66,10 @@ public class CachedReadRequestChain extends ReadRequestChain
       FileSystem.Statistics statistics,
       Configuration conf,
       BookKeeperFactory factory,
-      int generationNumber)
+      int generationNumber,
+      long fileSize,
+      long lastModified,
+      int clusterType)
   {
     super(generationNumber);
     this.conf = conf;
@@ -72,12 +80,23 @@ public class CachedReadRequestChain extends ReadRequestChain
     this.statistics = statistics;
     this.factory = factory;
     this.generationNumber = generationNumber;
+    this.fileSize = fileSize;
+    this.lastModified = lastModified;
+    this.clusterType = clusterType;
   }
 
   @VisibleForTesting
-  public CachedReadRequestChain(FileSystem remoteFileSystem, String remotePath, Configuration conf, BookKeeperFactory factory, int generationNumber)
+  public CachedReadRequestChain(
+          FileSystem remoteFileSystem,
+          String remotePath,
+          Configuration conf,
+          BookKeeperFactory factory,
+          int generationNumber,
+          long fileSize,
+          long lastModified,
+          int clusterType)
   {
-    this(remoteFileSystem, remotePath, new DirectBufferPool(), 100, null, conf, factory, generationNumber);
+    this(remoteFileSystem, remotePath, new DirectBufferPool(), 100, null, conf, factory, generationNumber, fileSize, lastModified, clusterType);
   }
 
   @VisibleForTesting
@@ -111,6 +130,14 @@ public class CachedReadRequestChain extends ReadRequestChain
       raf = new RandomAccessFile(localCachedFile, "r");
       fis = new FileInputStream(raf.getFD());
       fileChannel = fis.getChannel();
+
+      try (RetryingPooledBookkeeperClient bookKeeperClient = factory.createBookKeeperClient(conf)) {
+        CacheStatusResponse cacheStatusResponse = bookKeeperClient.getCacheStatus(
+                new CacheStatusRequest(remotePath, fileSize, lastModified, 0, 1).setClusterType(clusterType));
+        if (cacheStatusResponse.getGenerationNumber() != generationNumber) {
+          throw new IOException(String.format("Generation number changed, expected %d found %d", generationNumber, cacheStatusResponse.generationNumber));
+        }
+      }
 
       for (ReadRequest readRequest : readRequests) {
         if (cancelled) {

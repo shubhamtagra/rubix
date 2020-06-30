@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 
 import static com.qubole.rubix.spi.CacheUtil.UNKONWN_GENERATION_NUMBER;
+import static com.qubole.rubix.spi.ClusterType.TEST_CLUSTER_MANAGER;
 import static org.testng.Assert.assertTrue;
 
 /**
@@ -190,7 +191,7 @@ public class TestCachedReadRequestChain
     String localCachedFile = CacheUtil.getLocalPath(backendFilePath.toString(), conf, UNKONWN_GENERATION_NUMBER + 1);
     ReadRequest[] readRequests = getReadRequests(buffer);
 
-    CachedReadRequestChain cachedReadRequestChain = new CachedReadRequestChain(fs.getRemoteFileSystem(), backendFilePath.toString(), conf, factory, UNKONWN_GENERATION_NUMBER + 1);
+    CachedReadRequestChain cachedReadRequestChain = new CachedReadRequestChain(fs.getRemoteFileSystem(), backendFilePath.toString(), conf, factory, UNKONWN_GENERATION_NUMBER + 1, backendFile.length(), backendFile.lastModified(), TEST_CLUSTER_MANAGER.ordinal());
     for (ReadRequest rr : readRequests) {
       cachedReadRequestChain.addReadRequest(rr);
     }

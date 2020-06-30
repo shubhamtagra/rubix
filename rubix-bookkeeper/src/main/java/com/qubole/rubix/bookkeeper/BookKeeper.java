@@ -352,6 +352,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       cacheRequestCount.inc(cacheRequests);
       remoteRequestCount.inc(remoteRequests);
     }
+    log.info(String.format("CacheStatus for %s generation %d", remotePath, md.getGenerationNumber()));
     return new CacheStatusResponse(blockLocations, md.getGenerationNumber());
   }
 
@@ -457,12 +458,12 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     // different generation number means invalidation has occurred
     // TODO: find a way to optimize this so that the file doesn't have to be read again in next request (new data is stored instead of invalidation)
     if (md == null) {
-      log.warn(String.format("Could not update the metadata for file %s", remotePath));
+      // log.warn(String.format("Could not update the metadata for file %s", remotePath));
       return;
     }
     if (md.getGenerationNumber() != generationNumber)
     {
-      log.warn(String.format("Could not update the metadata for file %s having different generationNumber %d in cache and %d in request", remotePath, md.getGenerationNumber(), generationNumber));
+      // log.warn(String.format("Could not update the metadata for file %s having different generationNumber %d in cache and %d in request", remotePath, md.getGenerationNumber(), generationNumber));
       return;
     }
     if (isInvalidationRequired(md.getLastModified(), lastModified)) {
@@ -571,7 +572,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified, startBlock, endBlock).setClusterType(clusterType);
       response = getCacheStatus(request);
       List<BlockLocation> blockLocations = response.getBlocks();
-
+      log.info(String.format("starting readData for file %s generation %d length %d", remotePath, response.generationNumber, length));
       for (long blockNum = startBlock; blockNum < endBlock; blockNum++, idx++) {
         long readStart = blockNum * blockSize;
         log.debug(" blockLocation is: " + blockLocations.get(idx).getLocation() + " for path " + remotePath + " offset " + offset + " length " + length);
@@ -603,6 +604,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
           }
         }
       }
+      log.info(String.format("Done readData for file %s generation %d length %d", remotePath, response.generationNumber, length));
       return new ReadResponse(true, response.getGenerationNumber());
     }
     catch (Exception e) {

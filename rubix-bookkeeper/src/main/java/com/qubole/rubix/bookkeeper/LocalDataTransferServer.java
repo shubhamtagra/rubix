@@ -269,7 +269,7 @@ public class LocalDataTransferServer extends Configured implements Tool
             }
           }
 
-          int nread = readDataFromCachedFile(bookKeeperClient, remotePath, generationNumber, offset, readLength);
+          int nread = readDataFromCachedFile(bookKeeperClient, remotePath, generationNumber, offset, readLength, header.fileSize, header.lastModified, header.clusterType);
           log.debug(String.format("Done reading %d from %s at offset %d and length %d for client %s", nread, remotePath, offset, readLength, localDataTransferClient.getRemoteAddress()));
         }
       }
@@ -292,14 +292,29 @@ public class LocalDataTransferServer extends Configured implements Tool
       }
     }
 
-    private int readDataFromCachedFile(RetryingPooledBookkeeperClient bookKeeperClient, String remotePath, int generationNumber, long offset, int readLength) throws IOException, TException
+    private int readDataFromCachedFile(
+            RetryingPooledBookkeeperClient bookKeeperClient,
+            String remotePath,
+            int generationNumber,
+            long offset,
+            int readLength,
+            long fileSize,
+            long lastModified,
+            int clusterType) throws IOException, TException
     {
       FileChannel fc = null;
       int nread = 0;
       String filename = CacheUtil.getLocalPath(remotePath, conf, generationNumber);
+      log.info(String.format("Reading from local file %s, len %d", filename, readLength));
 
       try {
         fc = new FileInputStream(filename).getChannel();
+        // We have a lock on the file now, verify that we are using right generation number
+        CacheStatusResponse cacheStatusResponse = bookKeeperClient.getCacheStatus(
+                new CacheStatusRequest(remotePath, fileSize, lastModified, 0, 1).setClusterType(clusterType));
+        if (cacheStatusResponse.getGenerationNumber() != generationNumber) {
+          throw new IOException(String.format("Generation number changed, expected %d found %d", generationNumber, cacheStatusResponse.generationNumber));
+        }
         int maxCount = CacheConfig.getDataTransferBufferSize(conf);
         int lengthRemaining = readLength;
         long position = offset;
@@ -319,11 +334,18 @@ public class LocalDataTransferServer extends Configured implements Tool
           nread += fc.transferTo(position + nread, maxCount, localDataTransferClient);
           lengthRemaining = readLength - nread;
         }
+        log.info(String.format("Read from local file %s length %d", filename, nread));
       }
       catch (FileNotFoundException ex) {
         log.error(String.format("Could not create file channel for %s. Invalidating missing remote file %s", filename, remotePath));
         bookKeeperClient.invalidateFileMetadata(remotePath);
-        throw new IOException(String.format("File not found %s ", filename));
+        throw new IOException(String.format("File not found %s ", filename), ex);
+      }
+      catch (Exception e) {
+        if (e instanceof IOException) {
+          throw (IOException) e;
+        }
+        throw new IOException(e);
       }
       finally {
         if (fc != null) {

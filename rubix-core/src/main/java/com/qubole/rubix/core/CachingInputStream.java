@@ -385,7 +385,7 @@ public class CachingInputStream extends FSInputStream
         log.debug(String.format("Sending cached block %d to cachedReadRequestChain", blockNum));
         if (cachedReadRequestChain == null) {
           cachedReadRequestChain = new CachedReadRequestChain(remoteFileSystem, remotePath, bufferPool, diskReadBufferSize,
-                  statistics, conf, bookKeeperFactory, generationNumber);
+                  statistics, conf, bookKeeperFactory, generationNumber, fileSize, lastModified, clusterType.ordinal());
         }
         cachedReadRequestChain.addReadRequest(readRequest);
       }

@@ -161,6 +161,8 @@ public class NonLocalReadRequestChain extends ReadRequestChain
         }
       }
       finally {
+        // totalRead = 0;
+        // totalRead = directReadRequest(0);
         log.debug(String.format("Read %d bytes internally from node %s", totalRead, remoteNodeName));
         if (statistics != null) {
           statistics.incrementBytesRead(totalRead);
